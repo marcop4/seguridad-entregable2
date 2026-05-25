@@ -1,0 +1,6 @@
+{
+  "name": "SENTINEL",
+  "description": "SENTINEL es una plataforma de autenticación segura con roles, control de sesión única por navegador, encriptación BCrypt, recuperación de contraseñas por token temporal, notificaciones en tiempo real, alertas de seguridad de administrador, registros de auditoría y diseño adaptable.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
