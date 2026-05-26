@@ -109,15 +109,7 @@ export default function ManualTabs() {
               </div>
             </div>
 
-            <div className="border border-white/5 bg-blue-950/20 rounded-2xl p-6">
-              <h4 className="font-semibold text-blue-300 flex items-center gap-2 text-sm md:text-base">
-                <Cpu className="w-5 h-5 text-blue-400" />
-                Evidencia de Despliegue en la Nube (Google Cloud Run)
-              </h4>
-              <p className="mt-2 text-xs md:text-sm text-slate-300 leading-relaxed">
-                Este sistema se encuentra desplegado de forma activa en contenedores basados en la nube de <strong>Google Cloud Run</strong> con integración automatizada SSL. Puedes confirmar su velocidad de latencia, direccionamiento HTTPS seguro, y disponibilidad multiusuario abriéndolo directamente en el navegador del dispositivo móvil o compartiendo el ID del applet <code>abd07806-1b2b-41c2-9ed0-4b76369c3ae4</code> de AI Studio.
-              </p>
-            </div>
+
           </div>
         )}
 

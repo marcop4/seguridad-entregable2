@@ -13,12 +13,19 @@ Object.defineProperty(window, 'fetch', {
   value: async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     
-    if (url.startsWith('/api/') && !url.startsWith('/api/auth/')) {
+    if (url.startsWith('/api/')) {
       init = init || {};
       init.headers = {
         ...init.headers,
-        'X-Session-ID': localStorage.getItem('secure_auth_session_id') || ''
+        'bypass-tunnel-reminder': 'true',
+        'ngrok-skip-browser-warning': 'true'
       };
+      if (!url.startsWith('/api/auth/')) {
+        init.headers = {
+          ...init.headers,
+          'X-Session-ID': localStorage.getItem('secure_auth_session_id') || ''
+        };
+      }
     }
     
     return originalFetch(input, init);

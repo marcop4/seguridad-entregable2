@@ -284,8 +284,7 @@ export default function App() {
         setLoginPassword('');
         setOverrideUserRef(null);
         if (data.user) {
-          const savedTab = localStorage.getItem('sentinel_app_tab');
-          setAppTab(savedTab ? (savedTab as any) : (data.user.level >= 2 ? 'dashboard' : 'manual'));
+          setAppTab('dashboard');
         }
         setView('app');
         setApiSuccess("Conectado exitosamente.");
@@ -333,8 +332,7 @@ export default function App() {
           setCurrentSessionId(data.sessionId || null);
 
           setView('app');
-          const savedTab = localStorage.getItem('sentinel_app_tab');
-          setAppTab(savedTab ? (savedTab as any) : (data.user.level >= 4 ? 'dashboard' : 'manual'));
+          setAppTab('dashboard');
           playPing('success');
         }
       } catch (err) {
@@ -991,7 +989,7 @@ export default function App() {
           <div className="space-y-8 animate-fade-in outline-none" id="private-app-view" tabIndex={-1}>
             
             {/* Nav app tabs */}
-            <div className="flex bg-[#0F0F0F] p-2 gap-1.5 rounded-2xl border border-white/5 sticky top-16 z-30 overflow-x-auto no-scrollbar outline-none" id="nav-app-tabs-container" tabIndex={-1}>
+            <div className="flex bg-[#0F0F0F] p-2 pb-3 gap-1.5 rounded-2xl border border-white/5 sticky top-16 z-30 overflow-x-auto thin-scrollbar outline-none" id="nav-app-tabs-container" tabIndex={-1}>
               {currentUser && (
                 <button
                   onClick={() => setAppTab('dashboard')}
@@ -1007,7 +1005,7 @@ export default function App() {
                 </button>
               )}
               
-              {currentUser && currentUser.level >= 2 && (
+              {currentUser && currentUser.level >= 3 && (
                 <button
                   onClick={() => setAppTab('admin')}
                   className={`flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider whitespace-nowrap cursor-pointer ${
@@ -1018,11 +1016,11 @@ export default function App() {
                   id="tab-btn-admin"
                 >
                   <Settings className="w-4 h-4" />
-                  {currentUser.level >= 4 ? "Consola de Administrador" : currentUser.level === 3 ? "Auditoría SIEM" : "Soporte Operativo"}
+                  {currentUser.level >= 5 ? "Consola de Administrador" : currentUser.level === 4 ? "Consola de Moderador" : "Consola de Auditor"}
                 </button>
               )}
 
-              {currentUser && currentUser.level >= 4 && (
+              {currentUser && (currentUser.level === 5 || currentUser.level === 3) && (
                 <button
                   onClick={() => setAppTab('testing')}
                   className={`flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider whitespace-nowrap cursor-pointer ${
@@ -1078,73 +1076,90 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="bg-[#141414] rounded-2xl border border-white/5 p-6 shadow-lg space-y-4" id="active-session-widget">
-                      <div>
-                        <h4 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
-                          <Globe className="w-4.5 h-4.5 text-blue-400" />
-                          Detalle de Sesión Exclusiva
-                        </h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">La huella inmutable asociada a este navegador.</p>
-                      </div>
+                    {/* Mostrar Detalles de Sesión SÓLO si es Nivel >= 3 */}
+                    {currentUser.level >= 3 && (
+                      <div className="bg-[#141414] rounded-2xl border border-white/5 p-6 shadow-lg space-y-4" id="active-session-widget">
+                        <div>
+                          <h4 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
+                            <Globe className="w-4.5 h-4.5 text-blue-400" />
+                            Detalle de Sesión Exclusiva
+                          </h4>
+                          <p className="text-[11px] text-slate-500 mt-0.5">La huella inmutable asociada a este navegador.</p>
+                        </div>
 
-                      <div className="space-y-3 font-mono text-[11px] bg-[#0A0A0A] rounded-xl p-4 border border-white/5">
-                        <div className="flex justify-between border-b border-white/5 pb-2">
-                          <span className="text-slate-500">Identificador:</span>
-                          <span className="text-slate-300 font-semibold text-right">{currentSessionId}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-white/5 pb-2">
-                          <span className="text-slate-500">Navegador:</span>
-                          <span className="text-slate-300 font-semibold text-right text-[10px]">{currentUser.activeSessionBrowser || 'Chrome'}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-white/5 pb-2">
-                          <span className="text-slate-500">Dirección IP:</span>
-                          <span className="text-slate-300 font-semibold text-right">{currentUser.activeSessionIp || '127.0.0.1'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Iniciado el:</span>
-                          <span className="text-slate-300 font-semibold text-right">{currentUser.activeSessionStartedAt ? new Date(currentUser.activeSessionStartedAt).toLocaleTimeString() : 'Ahora'}</span>
+                        <div className="space-y-3 font-mono text-[11px] bg-[#0A0A0A] rounded-xl p-4 border border-white/5">
+                          <div className="flex justify-between border-b border-white/5 pb-2">
+                            <span className="text-slate-500">Identificador:</span>
+                            <span className="text-slate-300 font-semibold text-right">{currentSessionId}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-white/5 pb-2">
+                            <span className="text-slate-500">Navegador:</span>
+                            <span className="text-slate-300 font-semibold text-right text-[10px]">{currentUser.activeSessionBrowser || 'Chrome'}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-white/5 pb-2">
+                            <span className="text-slate-500">Dirección IP:</span>
+                            <span className="text-slate-300 font-semibold text-right">{currentUser.activeSessionIp || '127.0.0.1'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Iniciado el:</span>
+                            <span className="text-slate-300 font-semibold text-right">{currentUser.activeSessionStartedAt ? new Date(currentUser.activeSessionStartedAt).toLocaleTimeString() : 'Ahora'}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
-                  {/* Right Column (Intro to Single Session features & diagnostics) */}
+                  {/* Right Column */}
                   <div className="md:col-span-2 bg-[#141414] rounded-2xl border border-white/5 p-6 md:p-8 shadow-lg space-y-6" id="dashboard-general-intro">
                     <div>
                       <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                        <ShieldCheck className="w-5 h-5 text-blue-400" />
-                        Bienvenido a SENTINEL: Plataforma de Seguridad de Alta Gama
+                        {currentUser.level >= 3 ? <ShieldCheck className="w-5 h-5 text-blue-400" /> : <Info className="w-5 h-5 text-blue-400" />}
+                        Bienvenido a SENTINEL: Plataforma de Seguridad
                       </h3>
                       <p className="text-xs text-slate-400 mt-1">
-                        Estás conectado de manera exclusiva. El sistema utiliza controles de encriptación modular de contraseñas (BCrypt), logs administrativos de SIEM, detección inmutable de duplicación de acceso y mitigación contra ataques de fuerza bruta en tiempo real.
+                        Estás conectado de manera segura. Tu perfil actual está limitado a las capacidades de tu rol ({currentUser.role}).
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="border border-white/5 rounded-xl p-4 space-y-1.5 bg-[#0A0A0A]">
-                        <h4 className="font-semibold text-xs uppercase tracking-wider text-blue-400">Control de Sesión Único</h4>
-                        <p className="text-[11px] text-slate-400 leading-relaxed">
-                          La base de datos realiza un seguimiento continuo de tu navegador. Si abres este mismo usuario en otra pantalla e inicias sesión de manera simultánea, el servidor disparará una notificación de revocación en tiempo real desconectando este terminal al instante.
-                        </p>
-                      </div>
+                    {currentUser.level >= 3 ? (
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="border border-white/5 rounded-xl p-4 space-y-1.5 bg-[#0A0A0A]">
+                            <h4 className="font-semibold text-xs uppercase tracking-wider text-blue-400">Control de Sesión Único</h4>
+                            <p className="text-[11px] text-slate-400 leading-relaxed">
+                              La base de datos realiza un seguimiento continuo de tu navegador. Si abres este mismo usuario en otra pantalla e inicias sesión de manera simultánea, el servidor disparará una notificación de revocación en tiempo real desconectando este terminal al instante.
+                            </p>
+                          </div>
 
-                      <div className="border border-white/5 rounded-xl p-4 space-y-1.5 bg-[#0A0A0A]">
-                        <h4 className="font-semibold text-xs uppercase tracking-wider text-blue-400">Mitigación Brute Force</h4>
-                        <p className="text-[11px] text-slate-400 leading-relaxed">
-                          Nuestra protección de logins deshabilita y congela transitoriamente las tentativas ilegítimas después del tercer password erróneo sucesivo, emitiendo trazas de incidentes que pueden ser validadas en la pestaña de la Auditoría.
-                        </p>
-                      </div>
-                    </div>
+                          <div className="border border-white/5 rounded-xl p-4 space-y-1.5 bg-[#0A0A0A]">
+                            <h4 className="font-semibold text-xs uppercase tracking-wider text-blue-400">Mitigación Brute Force</h4>
+                            <p className="text-[11px] text-slate-400 leading-relaxed">
+                              Nuestra protección de logins deshabilita y congela transitoriamente las tentativas ilegítimas después del tercer password erróneo sucesivo, emitiendo trazas de incidentes que pueden ser validadas en la pestaña de la Auditoría.
+                            </p>
+                          </div>
+                        </div>
 
-                    <div className="bg-amber-500/10 rounded-xl p-4 border border-amber-500/20 text-xs text-amber-200 flex items-start gap-2.5">
-                      <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                      <div>
-                        <h5 className="font-bold text-amber-300">¿Cómo probar la funcionalidad de Sesión Única?</h5>
-                        <p className="mt-1 leading-relaxed text-[11px] text-amber-200/80">
-                          Para presenciar la potencia del Server-Sent Events (SSE), mantén abierta esta ventana, abre una nueva ventana en <strong>modo incógnito</strong> de tu navegador e intenta loguearte con este mismo usuario (<code>@{currentUser.username}</code>). Al aceptar sobreescribir la sesión en el segundo navegador, advertirás cómo esta primera interfaz de forma sincronizada se desvanece de inmediato informándote del redireccionamiento preventivo.
-                        </p>
+                        <div className="bg-amber-500/10 rounded-xl p-4 border border-amber-500/20 text-xs text-amber-200 flex items-start gap-2.5">
+                          <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <h5 className="font-bold text-amber-300">¿Cómo probar la funcionalidad de Sesión Única?</h5>
+                            <p className="mt-1 leading-relaxed text-[11px] text-amber-200/80">
+                              Para presenciar la potencia del Server-Sent Events (SSE), mantén abierta esta ventana, abre una nueva ventana en <strong>modo incógnito</strong> de tu navegador e intenta loguearte con este mismo usuario (<code>@{currentUser.username}</code>). Al aceptar sobreescribir la sesión en el segundo navegador, advertirás cómo esta primera interfaz de forma sincronizada se desvanece de inmediato informándote del redireccionamiento preventivo.
+                            </p>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="bg-blue-500/10 rounded-xl p-4 border border-blue-500/20 text-xs text-blue-200 flex items-start gap-2.5">
+                        <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                        <div>
+                          <h5 className="font-bold text-blue-300">Perfil Estándar Restringido</h5>
+                          <p className="mt-1 leading-relaxed text-[11px] text-blue-200/80">
+                            Como usuario estándar, no tienes acceso a las consolas administrativas, a los registros criptográficos ni a la suite de pruebas unitarias. Si necesitas privilegios adicionales, contacta al Administrador de Seguridad para escalar tu perfil.
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
