@@ -82,26 +82,6 @@ const DEFAULT_USERS: User[] = [
     createdAt: new Date().toISOString()
   },
   {
-    id: "user-soporte",
-    email: "soporte@sentinel.ai",
-    username: "soporte_tech",
-    fullName: "Soporte Operativo Regular",
-    role: "soporte" as any,
-    level: 2,
-    passwordHash: bcrypt.hashSync("password123", 10),
-    avatarUrl: "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100&h=100&fit=crop",
-    isLocked: false,
-    failedAttempts: 0,
-    activeSessionId: null,
-    activeSessionBrowser: null,
-    activeSessionIp: null,
-    activeSessionStartedAt: null,
-    recoveryToken: null,
-    recoveryTokenExpiresAt: null,
-    authType: 'local',
-    createdAt: new Date().toISOString()
-  },
-  {
     id: "user-guest",
     email: "user@sentinel.ai",
     username: "guest_user",
@@ -508,7 +488,6 @@ async function startServer() {
       case 'admin': return 5;
       case 'moderator': return 4;
       case 'auditor': return 3;
-      case 'soporte': return 2;
       default: return 1;
     }
   };
@@ -1342,7 +1321,7 @@ async function startServer() {
       username,
       fullName,
       role: role as UserRole,
-      level: role === 'admin' ? 5 : role === 'moderator' ? 4 : role === 'auditor' ? 3 : role === 'soporte' ? 2 : 1,
+      level: role === 'admin' ? 5 : role === 'moderator' ? 4 : role === 'auditor' ? 3 : 1,
       passwordHash: bcrypt.hashSync(password, 10),
       avatarUrl: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(username)}`,
       isLocked: false,

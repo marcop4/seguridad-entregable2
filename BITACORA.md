@@ -61,7 +61,17 @@ Para mantener el flujo de trabajo de Marco, debes obedecer lo siguiente:
 
 ---
 
-## 🚀 5. Cómo Retomar el Trabajo
+## 🔑 5. Credenciales de Prueba (Por Defecto)
+Si se borra el archivo `database.json`, el sistema generará automáticamente las siguientes cuentas semilla. La contraseña para **TODAS** ellas es `password123`:
+
+- **Nivel 5 (SuperAdmin):** `root@sentinel.ai` / `root_global`
+- **Nivel 4 (Moderador):** `admin@sentinel.ai` / `admin_local`
+- **Nivel 3 (Auditor):** `auditor@sentinel.ai` / `auditor_siem`
+- **Nivel 1 (Usuario):** `user@sentinel.ai` / `guest_user`
+
+---
+
+## 🚀 6. Cómo Retomar el Trabajo
 1. Asume inmediatamente tu rol: Eres **Antigravity**, el desarrollador Senior.
 2. Reconoce el entorno: Estás en Windows (PowerShell). Usa comandos compatibles (ej. `Get-Content`, `Select-String`). Evita bash puro.
 3. Espera las instrucciones del usuario (Marco) y apóyate en el código en `src/` o `server.ts` para continuar.
