@@ -11,8 +11,17 @@ import { randomBytes, createHash } from "crypto";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import rateLimit from "express-rate-limit";
+import nodemailer from "nodemailer";
 
 dotenv.config();
+
+// Verificación inicial de configuración SMTP
+console.log("\n=== Comprobación de Configuración SMTP ===");
+console.log(`SMTP_GMAIL_USER: ${process.env.SMTP_GMAIL_USER ? 'Configurado (' + process.env.SMTP_GMAIL_USER + ')' : 'NO CONFIGURADO'}`);
+console.log(`SMTP_GMAIL_PASS: ${process.env.SMTP_GMAIL_PASS ? 'Configurado (***)' : 'NO CONFIGURADO'}`);
+console.log(`SMTP_MAILTRAP_USER: ${process.env.SMTP_MAILTRAP_USER ? 'Configurado (' + process.env.SMTP_MAILTRAP_USER + ')' : 'NO CONFIGURADO'}`);
+console.log(`SMTP_MAILTRAP_PASS: ${process.env.SMTP_MAILTRAP_PASS ? 'Configurado (***)' : 'NO CONFIGURADO'}`);
+console.log("==========================================\n");
 
 import { User, AuditLog, SystemNotification, EmailSandboxItem, UserRole, CustomRole, SecurityEvent } from "./src/types";
 
@@ -495,7 +504,10 @@ async function startServer() {
   // --- MIDDLEWARE: AUTH & ROLE GUARDS ---
   const requirePrivilege = (minPrivilege: number) => {
     return (req: express.Request, res: express.Response, next: express.NextFunction) => {
-      const sessionId = req.headers['x-session-id'] as string;
+      const rawSessionId = req.headers['x-session-id'] as string;
+      const sessionId = rawSessionId ? rawSessionId.split(',')[0].trim() : '';
+      
+      console.log(`[AUTH GUARD] Header recibido en ${req.originalUrl}:`, rawSessionId, '-> Limpio:', sessionId);
 
       if (!sessionId) {
         return res.status(401).json({ success: false, message: "401 No autorizado. Faltan credenciales de sesión." });
@@ -503,6 +515,8 @@ async function startServer() {
 
       const db = loadDatabase();
       const user = db.users.find(u => u.activeSessionId === sessionId);
+      
+      console.log(`[AUTH GUARD] Usuario encontrado para la sesión:`, user ? user.username : 'Ninguno');
 
       if (!user) {
         return res.status(401).json({ success: false, message: "401 No autorizado. Su sesión es inválida o expiró." });
@@ -877,8 +891,107 @@ async function startServer() {
     }
   });
 
+  // --- ENRUTADOR SMTP DINÁMICO ---
+  async function sendRecoveryEmail(to: string, token: string, fullName: string) {
+    const isSentinelDomain = to.toLowerCase().endsWith("@sentinel.ai");
+    let transporter;
+
+    if (isSentinelDomain) {
+      // Configuración para dominio corporativo (Mailtrap)
+      transporter = nodemailer.createTransport({
+        host: process.env.SMTP_MAILTRAP_HOST,
+        port: 2525,
+        auth: {
+          user: process.env.SMTP_MAILTRAP_USER,
+          pass: process.env.SMTP_MAILTRAP_PASS
+        }
+      });
+    } else {
+      // Configuración para usuarios externos (Gmail)
+      transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.SMTP_GMAIL_USER,
+          pass: process.env.SMTP_GMAIL_PASS
+        }
+      });
+    }
+
+    // Parseamos inteligentemente el APP_URL (Si dice "MY_APP_URL" lo cambiamos al local por defecto para que funcione el botón)
+    const appUrl = process.env.APP_URL === 'MY_APP_URL' ? 'http://localhost:3000' : (process.env.APP_URL || 'http://localhost:3000');
+    const resetLink = `${appUrl}/reset-password?token=${token}`;
+
+    const htmlTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restablecimiento de Contraseña</title>
+</head>
+<body style="font-family: 'Segoe UI', Inter, Helvetica, sans-serif; background-color: #050505; color: #e5e5e5; margin: 0; padding: 40px 10px; line-height: 1.6;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #0A0A0A; border-radius: 12px; border: 1px solid #1F1F1F; overflow: hidden;">
+    <tr>
+      <td style="padding: 40px 30px; text-align: center; border-bottom: 1px solid #1A1A1A;">
+        <h1 style="color: #ffffff; font-size: 26px; font-weight: 800; letter-spacing: 2px; margin: 0;">SENTINEL<span style="color: #3b82f6;">.AI</span></h1>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 40px 30px; background-color: #0D0D0D;">
+        <h2 style="color: #ffffff; font-size: 20px; font-weight: 600; margin-top: 0; margin-bottom: 20px;">Auditoría de Seguridad</h2>
+        <p style="color: #A3A3A3; font-size: 15px; margin-bottom: 20px;">Hola, <strong style="color: #E5E5E5;">${fullName}</strong>.</p>
+        <p style="color: #A3A3A3; font-size: 15px; margin-bottom: 35px;">El sistema ha registrado una solicitud validada para restablecer las credenciales de acceso de tu cuenta. Por favor, procede al portal seguro haciendo clic en el siguiente botón:</p>
+        
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td align="center" style="padding-bottom: 35px;">
+              <a href="${resetLink}" style="display: inline-block; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; border: 1px solid #3b82f6;">Restablecer Contraseña</a>
+            </td>
+          </tr>
+        </table>
+        
+        <div style="border-left: 3px solid #ef4444; padding-left: 15px; margin-top: 10px; background-color: #1A0B0B; padding: 15px; border-radius: 4px;">
+          <p style="font-size: 13px; color: #D4D4D4; margin: 0;">
+            <strong style="color: #ef4444;">Protocolo de Tiempo Crítico:</strong> Este token cifrado expirará automáticamente en <strong>15 minutos</strong>. Si tú no solicitaste esta acción, tu cuenta está segura y puedes ignorar este correo.
+          </p>
+        </div>
+
+        <p style="font-size: 12px; color: #666666; margin-top: 30px; word-break: break-all;">
+          ¿Problemas con el botón? Copia y pega esto en tu navegador:<br>
+          <a href="${resetLink}" style="color: #3b82f6; text-decoration: none;">${resetLink}</a>
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 25px 30px; text-align: center; background-color: #050505; border-top: 1px solid #1A1A1A;">
+        <p style="margin: 0; font-size: 12px; color: #525252;">&copy; ${new Date().getFullYear()} Plataforma SENTINEL. Acceso Restringido.</p>
+        <p style="margin: 5px 0 0 0; font-size: 10px; color: #404040;">Universidad Nacional de San Martín (UNSM)</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+    const mailOptions = {
+      from: '"Seguridad SENTINEL" <no-reply@sentinel.ai>',
+      to,
+      subject: "Token de Restablecimiento Cifrado - SENTINEL",
+      text: `Hola, ${fullName}.\n\nHemos recibido una solicitud de restablecimiento de contraseña para tu cuenta. Si no fuiste tú, por favor ignora este correo.\n\nPara validar tu identidad e ingresar tu nueva contraseña, por favor ingresa al siguiente enlace temporal:\n\n${resetLink}\n\nEste token tiene una validez de 15 minutos.\n\nSaludos,\nEl Equipo de Seguridad Web`,
+      html: htmlTemplate
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log(`[SMTP] Correo enviado a: ${to} (vía ${isSentinelDomain ? 'Mailtrap' : 'Gmail'})`);
+    } catch (error) {
+      console.error(`[SMTP] Error CRÍTICO al enviar correo a ${to}:`, error);
+      throw error; // Lanzamos el error para que el endpoint lo atrape
+    }
+  }
+
   // --- API ROUTE: PASSWORD RECOVERY (FORGOT PASSWORD) ---
-  app.post("/api/auth/forgot-password", (req, res) => {
+  app.post("/api/auth/forgot-password", async (req, res) => {
     const { email } = req.body;
     const db = loadDatabase();
 
@@ -898,27 +1011,24 @@ async function startServer() {
     user.recoveryTokenExpiresAt = expires.toISOString();
     saveDatabase(db);
 
-    // Write email object to our visible Simulated Sandbox database!
-    const sandboxEmail: EmailSandboxItem = {
-      id: "mail-" + makeId(),
-      to: user.email,
-      subject: "Restablece tu contraseña - SENTINEL",
-      body: `Hola, ${user.fullName}.\n\nHemos recibido una solicitud de restablecimiento de contraseña para tu cuenta. Si no fuiste tú, por favor ignora este correo.\n\nPara validar tu identidad e ingresar tu nueva contraseña, por favor ingresa al siguiente enlace temporal:\n\n/reset-password?token=${token}\n\nEste token tiene una validez de 15 minutos.\n\nSaludos,\nEl Equipo de Seguridad Web`,
-      token,
-      timestamp: new Date().toISOString(),
-      used: false
-    };
+    try {
+      // Enviar correo real y esperar el resultado para confirmar el éxito
+      await sendRecoveryEmail(user.email, token, user.fullName);
 
-    db.emails.unshift(sandboxEmail);
-    saveDatabase(db);
+      logAudit(user.id, user.username, "PASSWORD_RESET_REQUESTED", "success", req, `Se solicitó restablecimiento de clave (Token oculto por seguridad).`);
+      addNotification("info", "Solicitud de Restablecimiento", `Usuario '${user.email}' solicitó cambiar su clave.`);
 
-    logAudit(user.id, user.username, "PASSWORD_RESET_TOKEN_GENERATED", "success", req, `Enlace de restablecimiento generado con token temporal.`);
-    addNotification("info", "Enlace de Clave Generado", `Se generó token de recuperación para el correo '${user.email}'.`);
-
-    res.json({
-      success: true,
-      message: "Se ha enviado un correo con instrucciones para restablecer su clave. Revise el Sandbox de Emails en pantalla."
-    });
+      res.json({
+        success: true,
+        message: "Si el correo está registrado, se enviará un enlace de restablecimiento pronto."
+      });
+    } catch (error) {
+      logAudit(user.id, user.username, "PASSWORD_RESET_FAILED", "failure", req, `Fallo en el servicio SMTP al intentar enviar correo a ${email}.`);
+      res.status(500).json({
+        success: false,
+        message: "Error interno del servidor de correo. Por favor, contacte a soporte o intente más tarde."
+      });
+    }
   });
 
   // --- API ROUTE: RESET PASSWORD ---
@@ -1005,16 +1115,83 @@ async function startServer() {
   // --- API ROUTE: GET SECURITY DASHBOARD STATS ---
   app.get("/api/admin/security-stats", requirePrivilege(2), (req, res) => {
     const db = loadDatabase();
-    const now = new Date();
-    const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    let now = new Date();
 
-    // 1. Calculate Timeline (Hourly buckets from securityLogs)
-    const timelineSlots = Array.from({ length: 24 }, (_, i) => {
-      const time = new Date(now.getTime() - (23 - i) * 60 * 60 * 1000);
-      time.setMinutes(0, 0, 0);
+    const targetDateParam = req.query.targetDate as string;
+    const zoomLevelParam = req.query.zoomLevel as string;
+    let windowParam = (req.query.window as string) || '24h';
+
+    // If zooming into a specific day or hour, lock the window and set 'now' to the end of that period
+    if (targetDateParam) {
+      const targetDate = new Date(Number(targetDateParam));
+      if (zoomLevelParam === 'hour') {
+        targetDate.setMinutes(59, 59, 999);
+        now = targetDate;
+        windowParam = '1h'; // Zoom into 5-min intervals for that specific hour
+      } else {
+        targetDate.setHours(23, 59, 59, 999);
+        now = targetDate;
+        windowParam = '24h'; // Zoom into 1-hour intervals for that specific day
+      }
+    }
+    let windowMs: number;
+    let slotCount: number;
+    let slotMs: number;
+
+    switch (windowParam) {
+      case '1h':
+        windowMs = 1 * 60 * 60 * 1000;
+        slotCount = 12; // 5-minute intervals
+        slotMs = 5 * 60 * 1000;
+        break;
+      case '6h':
+        windowMs = 6 * 60 * 60 * 1000;
+        slotCount = 12; // 30-minute intervals
+        slotMs = 30 * 60 * 1000;
+        break;
+      case '7d':
+        windowMs = 7 * 24 * 60 * 60 * 1000;
+        slotCount = 28; // 6-hour intervals
+        slotMs = 6 * 60 * 60 * 1000;
+        break;
+      case '30d':
+        windowMs = 30 * 24 * 60 * 60 * 1000;
+        slotCount = 30; // daily intervals
+        slotMs = 24 * 60 * 60 * 1000;
+        break;
+      case '24h':
+      default:
+        windowMs = 24 * 60 * 60 * 1000;
+        slotCount = 24; // 1-hour intervals
+        slotMs = 60 * 60 * 1000;
+        break;
+    }
+
+    const windowStart = new Date(now.getTime() - windowMs);
+
+    const getLocalSnappedTime = (date: Date, w: string): Date => {
+      const d = new Date(date);
+      d.setMilliseconds(0);
+      d.setSeconds(0);
+      if (w === '1h') d.setMinutes(Math.floor(d.getMinutes() / 5) * 5);
+      else if (w === '6h') d.setMinutes(Math.floor(d.getMinutes() / 30) * 30);
+      else if (w === '24h') d.setMinutes(0);
+      else if (w === '7d') {
+        d.setMinutes(0);
+        d.setHours(Math.floor(d.getHours() / 6) * 6);
+      } else if (w === '30d') {
+        d.setMinutes(0);
+        d.setHours(0);
+      }
+      return d;
+    };
+
+    // Build timeline slots dynamically
+    const timelineSlots = Array.from({ length: slotCount }, (_, i) => {
+      const time = new Date(now.getTime() - (slotCount - 1 - i) * slotMs);
+      const snapped = getLocalSnappedTime(time, windowParam);
       return {
-        hour: time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-        timestamp: time.getTime(),
+        timestamp: snapped.getTime(),
         failures: 0,
         blocks: 0
       };
@@ -1023,10 +1200,9 @@ async function startServer() {
     if (db.securityLogs) {
       db.securityLogs.forEach(log => {
         const logTime = new Date(log.createdAt);
-        if (logTime >= last24h) {
-          const hourStart = new Date(logTime);
-          hourStart.setMinutes(0, 0, 0);
-          const slot = timelineSlots.find(s => s.timestamp === hourStart.getTime());
+        if (logTime >= windowStart) {
+          const snappedLog = getLocalSnappedTime(logTime, windowParam);
+          const slot = timelineSlots.find(s => s.timestamp === snappedLog.getTime());
           if (slot) {
             if (log.eventType === 'LOGIN_FAILED') slot.failures++;
             if (log.eventType === 'ACCOUNT_LOCKED' || log.eventType === 'BRUTE_FORCE_DETECTED') slot.blocks++;
@@ -1035,16 +1211,8 @@ async function startServer() {
       });
     }
 
-    // 2. Critical Alerts (Last 5 from securityLogs)
-    const criticalAlerts = (db.securityLogs || [])
-      .slice(0, 5)
-      .map(log => ({
-        id: log.id,
-        time: new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-        target: log.username || log.ipAddress,
-        type: log.eventType === 'LOGIN_FAILED' ? 'Fallo' : 'Bloqueo',
-        status: log.eventType === 'LOGIN_FAILED' ? 'failure' : 'warn'
-      }));
+    // Critical alerts count scales with window
+    const alertLimit = windowParam === '30d' ? 15 : windowParam === '7d' ? 10 : 5;
 
     res.json({
       timeline: timelineSlots.map(s => ({
@@ -1053,7 +1221,8 @@ async function startServer() {
         blocks: s.blocks
       })),
       criticalAlerts: (db.securityLogs || [])
-        .slice(0, 5)
+        .filter(log => new Date(log.createdAt) >= windowStart)
+        .slice(0, alertLimit)
         .map(log => ({
           id: log.id,
           createdAt: log.createdAt,
@@ -1259,6 +1428,44 @@ async function startServer() {
     const { passwordHash, ...safeUser } = user;
     res.json({ success: true, user: safeUser, message: "Usuario modificado correctamente." });
   });
+  // Reset Fails Amnesty
+  app.put("/api/admin/users/:userId/reset-fails", requirePrivilege(4), (req, res) => {
+    const { userId } = req.params;
+    const db = loadDatabase();
+
+    const userIndex = db.users.findIndex(u => u.id === userId);
+    if (userIndex === -1) {
+      return res.status(404).json({ success: false, message: "Usuario no encontrado." });
+    }
+
+    const user = db.users[userIndex];
+    const callerPrivilege = (req as any).userPrivilege;
+    const targetPrivilege = getPrivilegeLevel(db, user.role);
+
+    if (callerPrivilege < 5 && targetPrivilege >= callerPrivilege && user.id !== (req as any).user.id) {
+      return res.status(403).json({ success: false, message: "Acceso Denegado. Control Vertical: No puede limpiar el historial de cuentas de un nivel jerárquico igual o superior al suyo." });
+    }
+
+    user.failedAttempts = 0;
+    user.isLocked = false;
+    user.lockedUntil = null;
+
+    saveDatabase(db);
+
+    logAudit(
+      (req as any).user.id,
+      (req as any).user.username,
+      "USER_MANAGEMENT_AMNESTY",
+      "success",
+      req,
+      `Amnistía aplicada a ${user.username}: Se limpiaron los fallos y se levantaron bloqueos.`
+    );
+
+    addNotification("info", "Amnistía Aplicada", `El historial de bloqueos y fallos del usuario "${user.username}" ha sido limpiado.`);
+
+    res.json({ success: true, message: "Historial de fallos y bloqueos limpiado correctamente." });
+  });
+
 
   // Delete User
   app.delete("/api/admin/users/:userId", requirePrivilege(4), (req, res) => {
@@ -1563,6 +1770,97 @@ async function startServer() {
     };
 
     runTests();
+  });
+  // --- API ROUTE: LINK GOOGLE ACCOUNT ---
+  app.post("/api/users/link-google", requirePrivilege(1), async (req, res) => {
+    const { credential } = req.body;
+    const currentUser = (req as any).user;
+    const userPrivilege = (req as any).userPrivilege;
+
+    // RBAC: Solo roles user (Niveles < 3) pueden vincular
+    if (userPrivilege >= 3) {
+      logAudit(currentUser.id, currentUser.username, "GOOGLE_LINK_BLOCKED_RBAC", "warn", req, `Intento denegado de vinculación Google (Nivel ${userPrivilege}).`, loadDatabase());
+      return res.status(403).json({ success: false, message: "Autenticación externa (SSO) deshabilitada por estrictas políticas del SOC para credenciales con acceso a información crítica o funciones administrativas." });
+    }
+
+    if (!credential) {
+      return res.status(400).json({ success: false, message: "Token de Google no proporcionado." });
+    }
+
+    try {
+      const googleResponse = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: `Bearer ${credential}` }
+      });
+      const payload = await googleResponse.json();
+
+      if (!googleResponse.ok || !payload || !payload.email) {
+        return res.status(401).json({ success: false, message: "Token de Google inválido." });
+      }
+
+      const db = loadDatabase();
+      const dbUser = db.users.find(u => u.id === currentUser.id);
+
+      if (dbUser) {
+        dbUser.googleId = payload.sub;
+        saveDatabase(db);
+        logAudit(dbUser.id, dbUser.username, "GOOGLE_ACCOUNT_LINKED", "success", req, `Cuenta vinculada exitosamente con Google SSO.`, db);
+
+        const { passwordHash, recoveryToken, ...safeUser } = dbUser;
+        res.json({ success: true, message: "Cuenta de Google vinculada con éxito.", user: safeUser });
+      } else {
+        res.status(404).json({ success: false, message: "Usuario no encontrado." });
+      }
+    } catch (error) {
+      console.error("Google Link Error:", error);
+      res.status(500).json({ success: false, message: "Error interno al vincular." });
+    }
+  });
+
+  // --- API ROUTE: UNLINK GOOGLE ACCOUNT ---
+  app.post("/api/users/unlink-google", requirePrivilege(1), (req, res) => {
+    const currentUser = (req as any).user;
+    const userPrivilege = (req as any).userPrivilege;
+
+    if (userPrivilege >= 3) {
+      logAudit(currentUser.id, currentUser.username, "GOOGLE_UNLINK_BLOCKED_RBAC", "warn", req, `Intento denegado de desvinculación Google (Nivel ${userPrivilege}).`, loadDatabase());
+      return res.status(403).json({ success: false, message: "Operación no permitida para este nivel." });
+    }
+
+    const db = loadDatabase();
+    const dbUser = db.users.find(u => u.id === currentUser.id);
+
+    if (dbUser) {
+      dbUser.googleId = null;
+      saveDatabase(db);
+      logAudit(dbUser.id, dbUser.username, "GOOGLE_ACCOUNT_UNLINKED", "success", req, `Cuenta desvinculada de Google SSO.`, db);
+
+      const { passwordHash, recoveryToken, ...safeUser } = dbUser;
+      res.json({ success: true, message: "Cuenta de Google desvinculada con éxito.", user: safeUser });
+    } else {
+      res.status(404).json({ success: false, message: "Usuario no encontrado." });
+    }
+  });
+
+  // --- API ROUTE: GET MY RECENT ACTIVITY (USER LEVEL) ---
+  app.get("/api/users/my-activity", requirePrivilege(1), (req, res) => {
+    const currentUser = (req as any).user;
+    const db = loadDatabase();
+
+    // Filter logs for this specific user. Only return the last 5 relevant login/auth events
+    const myLogs = db.auditLogs
+      .filter(log => log.userId === currentUser.id)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 5)
+      .map(log => ({
+        id: log.id,
+        timestamp: log.timestamp,
+        action: log.action,
+        status: log.status,
+        ipAddress: log.ipAddress,
+        userAgent: log.userAgent
+      }));
+
+    res.json(myLogs);
   });
 
   // Vite middleware for development or Static compiler serving for Cloud Run production

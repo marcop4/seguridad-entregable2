@@ -4,9 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Key, Mail, LogIn, UserPlus, LogOut, ShieldCheck, 
-  HelpCircle, Terminal, User as UserIcon, Globe, Info, 
+import {
+  Key, Mail, LogIn, UserPlus, LogOut, ShieldCheck,
+  HelpCircle, Terminal, User as UserIcon, Globe, Info,
   Settings, Sparkles, ToggleLeft, Activity, BellRing, CheckCircle,
   Eye, EyeOff
 } from 'lucide-react';
@@ -14,7 +14,7 @@ import { useGoogleLogin } from '@react-oauth/google';
 import { User, AuditLog, UserRole } from './types';
 import ManualTabs from './components/ManualTabs';
 import TestAutomation from './components/TestAutomation';
-import EmailSandbox from './components/EmailSandbox';
+import SentinelLogo from './components/SentinelLogo';
 import AdminPanel from './components/AdminPanel';
 
 export default function App() {
@@ -63,6 +63,7 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [refreshSeed, setRefreshSeed] = useState(0);
+  const [myActivity, setMyActivity] = useState<any[] | null>(null);
 
   // Errors / Overlays
   const [apiError, setApiError] = useState<string | null>(null);
@@ -85,7 +86,7 @@ export default function App() {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
-      
+
       osc.connect(gain);
       gain.connect(audioCtx.destination);
 
@@ -111,7 +112,7 @@ export default function App() {
         osc.start();
         osc.stop(audioCtx.currentTime + 0.12);
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   // Restore local storage session on mount
@@ -141,7 +142,7 @@ export default function App() {
 
   const syncAdminData = async () => {
     if (!currentUser || currentUser.level < 2) return;
-    
+
     // Fallback protection just in case
     if (localStorage.getItem('secure_auth_session_id') !== currentSessionId) {
       window.location.reload();
@@ -175,12 +176,36 @@ export default function App() {
     }
   }, [view, currentUser, refreshSeed]);
 
+  useEffect(() => {
+    if (appTab === 'dashboard' && currentUser && currentUser.level <= 2) {
+      setMyActivity(null);
+      fetch('/api/users/my-activity', {
+        headers: { 'x-session-id': currentSessionId || '' }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setMyActivity(data);
+          else setMyActivity([]);
+        })
+        .catch(() => setMyActivity([]));
+    }
+  }, [appTab, currentUser, currentSessionId, refreshSeed]);
+
   // Real-time Push (SSE) Client Handler
   useEffect(() => {
     if (!currentUser || !currentSessionId) return;
 
     // Connect to Server-Sent Events notifications
     const sse = new EventSource(`/api/notifications/stream?userId=${currentUser.id}`);
+
+    sse.onerror = () => {
+      console.error("[SSE] Error de conexión detectado. Cerrando EventSource para evitar DDoS loop...");
+      sse.close();
+      // Wait 10 seconds before attempting to reconnect via state trigger
+      setTimeout(() => {
+        setRefreshSeed(s => s + 1);
+      }, 10000);
+    };
 
     sse.addEventListener('session_revoked', (e: MessageEvent) => {
       const data = JSON.parse(e.data);
@@ -211,7 +236,7 @@ export default function App() {
     return () => {
       sse.close();
     };
-  }, [currentUser, currentSessionId]);
+  }, [currentUser, currentSessionId, refreshSeed]);
 
   // Auto-dismiss feedback messages
   useEffect(() => {
@@ -274,12 +299,12 @@ export default function App() {
         localStorage.setItem('secure_auth_user', JSON.stringify(data.user));
         localStorage.setItem('secure_auth_token', data.token || '');
         localStorage.setItem('secure_auth_session_id', data.sessionId || '');
-        
+
         setCurrentUser(data.user);
         setSessionToken(data.token || null);
         setCurrentSessionId(data.sessionId || null);
         setHasLoginInputError(false);
-        
+
         // Reset states
         setLoginPassword('');
         setOverrideUserRef(null);
@@ -326,7 +351,7 @@ export default function App() {
           localStorage.setItem('secure_auth_user', JSON.stringify(data.user));
           localStorage.setItem('secure_auth_token', data.token || '');
           localStorage.setItem('secure_auth_session_id', data.sessionId || '');
-          
+
           setCurrentUser(data.user);
           setSessionToken(data.token || null);
           setCurrentSessionId(data.sessionId || null);
@@ -344,6 +369,73 @@ export default function App() {
       playPing('alert');
     }
   });
+
+  // Google OAuth for Account Linking
+  const linkWithGoogle = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setApiError(null);
+      setApiSuccess(null);
+
+      try {
+        const response = await fetch('/api/users/link-google', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-session-id': currentSessionId || ''
+          },
+          body: JSON.stringify({ credential: tokenResponse.access_token })
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          setApiError(data.message);
+          playPing('alert');
+          return;
+        }
+
+        if (data.success && data.user) {
+          localStorage.setItem('secure_auth_user', JSON.stringify(data.user));
+          setCurrentUser(data.user);
+          setApiSuccess(data.message);
+          playPing('success');
+        }
+      } catch (err) {
+        setApiError("Error contactando al servidor para vincular cuenta Google.");
+      }
+    },
+    onError: () => {
+      setApiError("Vinculación con Google cancelada o fallida.");
+      playPing('alert');
+    }
+  });
+
+  const handleUnlinkGoogle = async () => {
+    setApiError(null);
+    setApiSuccess(null);
+    try {
+      const response = await fetch('/api/users/unlink-google', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-id': currentSessionId || ''
+        }
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setApiError(data.message);
+        playPing('alert');
+        return;
+      }
+      if (data.success && data.user) {
+        localStorage.setItem('secure_auth_user', JSON.stringify(data.user));
+        setCurrentUser(data.user);
+        setApiSuccess(data.message);
+        playPing('success');
+      }
+    } catch (err) {
+      setApiError("Error contactando al servidor para desvincular cuenta Google.");
+    }
+  };
 
   // Registration callback
   const handleRegister = async (e: React.FormEvent) => {
@@ -403,8 +495,8 @@ export default function App() {
           userId: currentUser.id,
           sessionId: currentSessionId
         })
-      }).catch(() => {}); // Fire and forget
-    } catch (e) {}
+      }).catch(() => { }); // Fire and forget
+    } catch (e) { }
 
     localStorage.clear();
     setCurrentUser(null);
@@ -434,9 +526,15 @@ export default function App() {
         body: JSON.stringify({ email: forgotEmail })
       });
       const data = await response.json();
-      setApiSuccess(data.message);
-      setRefreshSeed(prev => prev + 1);
-      playPing('success');
+
+      if (!response.ok || !data.success) {
+        setApiError(data.message || "Fallo del servidor de correo.");
+        playPing('alert');
+      } else {
+        setApiSuccess("Si el correo ingresado coincide con una cuenta activa en nuestro sistema, en breve recibirás las instrucciones para restablecer tu contraseña. Si no lo recibes en unos minutos, verifica que hayas escrito bien tu correo o revisa tu carpeta de Spam.");
+        setRefreshSeed(prev => prev + 1);
+        playPing('success');
+      }
     } catch (err) {
       setApiError("Fallo de red en recuperación.");
     }
@@ -485,34 +583,37 @@ export default function App() {
     try {
       await fetch('/api/admin/notifications/read', { method: 'POST' });
       syncAdminData();
-    } catch (e) {}
+    } catch (e) { }
   };
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-slate-200 flex flex-col justify-between font-sans selection:bg-blue-600/30 selection:text-slate-100 outline-none" id="main-frame-wrapper" tabIndex={-1}>
-      
+
       {/* HEADER BAR */}
       <header className="bg-[#0F0F0F] border-b border-white/10 sticky top-0 z-40 transition-colors" id="app-nav-bar">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black" id="brand-launcher">
-              <ShieldCheck className="w-5.5 h-5.5" />
+            <div className="h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm shadow-blue-500/20" id="brand-launcher">
+              <SentinelLogo className="w-7 h-7" />
             </div>
-            <div>
-              <h1 className="text-sm font-extrabold text-white tracking-tight leading-none uppercase">SENTI<span className="text-blue-500">NEL</span></h1>
-              <span className="text-[9px] text-slate-500 font-mono tracking-widest uppercase">Centro de Operaciones de Seguridad</span>
+            <div className="flex flex-col justify-center translate-y-[1px]">
+              <h1 className="text-base sm:text-lg font-extrabold text-white tracking-tight leading-none uppercase">
+                SENTI<span className="text-blue-500">NEL</span>
+              </h1>
+              <span className="hidden sm:block text-[10px] sm:text-[11px] text-slate-500 font-mono tracking-widest uppercase mt-0.5">
+                Centro de Operaciones de Seguridad
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Audio Toggle button */}
             <button
               onClick={() => { setAudioEnabled(!audioEnabled); playPing('pop'); }}
-              className={`p-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                audioEnabled 
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                  : 'bg-white/5 text-slate-500 border-white/10'
-              }`}
+              className={`p-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${audioEnabled
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                : 'bg-white/5 text-slate-500 border-white/10'
+                }`}
               title="Activar/Desactivar efectos de audio del sistema"
             >
               <BellRing className="w-3.5 h-3.5" />
@@ -521,11 +622,11 @@ export default function App() {
 
             {/* Authenticated Controls */}
             {currentUser ? (
-              <div className="flex items-center gap-2" id="nav-user-chip">
+              <div className="flex items-center gap-1.5 sm:gap-2" id="nav-user-chip">
                 <div className="relative shrink-0">
-                  <img 
-                    src={currentUser.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=?"} 
-                    alt="Perfil" 
+                  <img
+                    src={currentUser.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=?"}
+                    alt="Perfil"
                     referrerPolicy="no-referrer"
                     className="w-8 h-8 rounded-full border border-white/10"
                   />
@@ -559,7 +660,7 @@ export default function App() {
 
       {/* CORE BODY WRAPPER */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-8 outline-none" id="core-main-body" tabIndex={-1}>
-        
+
         {/* API FEEDS FEEDBACK BAR */}
         {(apiSuccess || systemAlertOverlay) && (
           <div className="space-y-2 animate-fade-in" id="feedbacks-container">
@@ -575,8 +676,8 @@ export default function App() {
                   <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
                   <span>{systemAlertOverlay}</span>
                 </div>
-                <button 
-                  onClick={() => setSystemAlertOverlay(null)} 
+                <button
+                  onClick={() => setSystemAlertOverlay(null)}
                   className="px-2.5 py-1 bg-amber-600 text-white rounded text-[10px] font-semibold uppercase hover:bg-amber-550 transition-colors"
                 >
                   Cerrar Aviso
@@ -589,23 +690,21 @@ export default function App() {
         {/* CONTROLS MODALS / AUTH LAYOUT */}
         {view === 'auth' ? (
           <div className="max-w-md mx-auto bg-[#141414] rounded-2xl border border-white/5 shadow-2xl overflow-hidden p-6 md:p-8 space-y-6 animate-slide-up" id="auth-sub-frame">
-            
+
             {/* Nav Auth Subviews */}
             <div className="flex border-b border-white/10 pb-3 justify-center gap-4">
               <button
                 onClick={() => { setSubView('login'); setApiError(null); setApiSuccess(null); }}
-                className={`text-sm font-bold pb-2 transition-all border-b-2 ${
-                  subView === 'login' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-500 hover:text-slate-300'
-                }`}
+                className={`text-sm font-bold pb-2 transition-all border-b-2 ${subView === 'login' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-500 hover:text-slate-300'
+                  }`}
                 id="tab-login"
               >
                 Inicia Sesión
               </button>
               <button
                 onClick={() => { setSubView('register'); setApiError(null); setApiSuccess(null); }}
-                className={`text-sm font-bold pb-2 transition-all border-b-2 ${
-                  subView === 'register' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-500 hover:text-slate-300'
-                }`}
+                className={`text-sm font-bold pb-2 transition-all border-b-2 ${subView === 'register' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-500 hover:text-slate-300'
+                  }`}
                 id="tab-register"
               >
                 Registro Seguro
@@ -660,9 +759,8 @@ export default function App() {
                       setLoginInput(e.target.value);
                       if (hasLoginInputError) setHasLoginInputError(false);
                     }}
-                    className={`w-full p-2.5 text-xs rounded-xl border bg-[#0A0A0A] text-slate-200 focus:outline-hidden focus:border-blue-500 placeholder-slate-600 transition-all ${
-                      hasLoginInputError ? 'input-error border-red-500 ring-1 ring-red-500/30' : 'border-white/10'
-                    }`}
+                    className={`w-full p-2.5 text-xs rounded-xl border bg-[#0A0A0A] text-slate-200 focus:outline-hidden focus:border-blue-500 placeholder-slate-600 transition-all ${hasLoginInputError ? 'input-error border-red-500 ring-1 ring-red-500/30' : 'border-white/10'
+                      }`}
                     id="login-username"
                   />
                 </div>
@@ -688,9 +786,8 @@ export default function App() {
                         setLoginPassword(e.target.value);
                         if (hasLoginInputError) setHasLoginInputError(false);
                       }}
-                      className={`w-full pl-2.5 pr-10 py-2.5 text-xs rounded-xl border bg-[#0A0A0A] text-slate-200 focus:outline-hidden focus:border-blue-500 placeholder-slate-600 transition-all ${
-                        hasLoginInputError ? 'input-error border-red-500 ring-1 ring-red-500/30' : 'border-white/10'
-                      }`}
+                      className={`w-full pl-2.5 pr-10 py-2.5 text-xs rounded-xl border bg-[#0A0A0A] text-slate-200 focus:outline-hidden focus:border-blue-500 placeholder-slate-600 transition-all ${hasLoginInputError ? 'input-error border-red-500 ring-1 ring-red-500/30' : 'border-white/10'
+                        }`}
                       id="login-password"
                     />
                     <button
@@ -738,10 +835,10 @@ export default function App() {
                 >
                   {/* Google Custom identity SVG */}
                   <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                   </svg>
                   Inicia con Google
                 </button>
@@ -987,66 +1084,67 @@ export default function App() {
         ) : (
           /* SYSTEM INTERNAL APPLICATION INTERFACE (User Logged-In view) */
           <div className="space-y-8 animate-fade-in outline-none" id="private-app-view" tabIndex={-1}>
-            
-            {/* Nav app tabs */}
-            <div className="flex bg-[#0F0F0F] p-2 pb-3 gap-1.5 rounded-2xl border border-white/5 sticky top-16 z-30 overflow-x-auto thin-scrollbar outline-none" id="nav-app-tabs-container" tabIndex={-1}>
-              {currentUser && (
-                <button
-                  onClick={() => setAppTab('dashboard')}
-                  className={`flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider whitespace-nowrap cursor-pointer ${
-                    appTab === 'dashboard'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                  id="tab-btn-dash"
-                >
-                  <Activity className="w-4 h-4" />
-                  Mi Conexión
-                </button>
-              )}
-              
-              {currentUser && currentUser.level >= 3 && (
-                <button
-                  onClick={() => setAppTab('admin')}
-                  className={`flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider whitespace-nowrap cursor-pointer ${
-                    appTab === 'admin'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                  id="tab-btn-admin"
-                >
-                  <Settings className="w-4 h-4" />
-                  {currentUser.level >= 5 ? "Consola de Administrador" : currentUser.level === 4 ? "Consola de Moderador" : "Consola de Auditor"}
-                </button>
-              )}
 
-              {currentUser && (currentUser.level === 5 || currentUser.level === 3) && (
-                <button
-                  onClick={() => setAppTab('testing')}
-                  className={`flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider whitespace-nowrap cursor-pointer ${
-                    appTab === 'testing'
+            {/* Nav app tabs Wrapper with Gradient Mask */}
+            <div className="relative sticky top-16 z-30 mb-8">
+              <div className="flex bg-[#0F0F0F] p-2 gap-1.5 rounded-2xl border border-white/5 overflow-x-auto outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" id="nav-app-tabs-container" tabIndex={-1}>
+                {currentUser && (
+                  <button
+                    onClick={() => setAppTab('dashboard')}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider whitespace-nowrap cursor-pointer ${appTab === 'dashboard'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
                       : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                  id="tab-btn-testing"
-                >
-                  <Terminal className="w-4 h-4" />
-                  Suite de Pruebas Unitarias
-                </button>
-              )}
+                      }`}
+                    id="tab-btn-dash"
+                  >
+                    <Activity className="w-4 h-4" />
+                    Mi Conexión
+                  </button>
+                )}
 
-              <button
-                onClick={() => setAppTab('manual')}
-                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider whitespace-nowrap cursor-pointer ${
-                  appTab === 'manual'
+                {currentUser && currentUser.level >= 3 && (
+                  <button
+                    onClick={() => setAppTab('admin')}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider whitespace-nowrap cursor-pointer ${appTab === 'admin'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    id="tab-btn-admin"
+                  >
+                    <Settings className="w-4 h-4" />
+                    {currentUser.level >= 5 ? "Consola de Administrador" : currentUser.level === 4 ? "Consola de Moderador" : "Consola de Auditor"}
+                  </button>
+                )}
+
+                {currentUser && (currentUser.level === 5 || currentUser.level === 3) && (
+                  <button
+                    onClick={() => setAppTab('testing')}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider whitespace-nowrap cursor-pointer ${appTab === 'testing'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    id="tab-btn-testing"
+                  >
+                    <Terminal className="w-4 h-4" />
+                    Suite de Pruebas Unitarias
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setAppTab('manual')}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider whitespace-nowrap cursor-pointer ${appTab === 'manual'
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-                id="tab-btn-manual"
-              >
-                <HelpCircle className="w-4 h-4" />
-                Informe y Manual
-              </button>
+                    }`}
+                  id="tab-btn-manual"
+                >
+                  <HelpCircle className="w-4 h-4" />
+                  Informe y Manual
+                </button>
+              </div>
+              
+              {/* Gradient Mask for swipe hint */}
+              <div className="absolute top-0 right-0 h-full w-12 bg-gradient-to-l from-[#0F0F0F] to-transparent pointer-events-none rounded-r-2xl"></div>
             </div>
 
             {/* TAB INTERACTIVE CONTENT PANEL */}
@@ -1058,11 +1156,11 @@ export default function App() {
                     <div className="bg-[#141414] rounded-2xl border border-white/5 p-6 shadow-lg relative overflow-hidden" id="dashboard-user-hero">
                       <div className="flex items-center gap-4">
                         <div className="relative shrink-0">
-                          <img 
-                            src={currentUser.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=?"} 
-                            alt="Avatar" 
+                          <img
+                            src={currentUser.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=?"}
+                            alt="Avatar"
                             referrerPolicy="no-referrer"
-                            className="w-14 h-14 rounded-full border border-white/15 shrink-0 object-cover" 
+                            className="w-14 h-14 rounded-full border border-white/15 shrink-0 object-cover"
                           />
                           <span className="absolute bottom-0 right-0 block h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-[#141414] animate-pulse" title="En línea" />
                         </div>
@@ -1073,6 +1171,57 @@ export default function App() {
                             Perfil: {currentUser.role.toUpperCase()}
                           </div>
                         </div>
+                      </div>
+
+                      {/* GOOGLE SSO SECCION */}
+                      <div className="mt-6 pt-6 border-t border-white/5">
+                        <h4 className="font-bold text-white text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                          Autenticación SSO
+                        </h4>
+
+                        {currentUser.level >= 3 ? (
+                          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-start gap-2.5">
+                            <ShieldCheck className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                            <p className="text-[11px] text-red-300 leading-relaxed">
+                              Autenticación externa (SSO) deshabilitada por estrictas políticas del SOC para credenciales con acceso a información crítica o funciones administrativas.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="bg-[#0A0A0A] rounded-xl p-4 border border-white/5 flex flex-col gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shrink-0">
+                                <svg viewBox="0 0 24 24" className="w-4 h-4" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                                </svg>
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="text-white text-xs font-semibold">Google Identity Platform</h5>
+                                <p className="text-[10px] text-slate-400 mt-0.5">
+                                  {currentUser.googleId ? "Tu cuenta está vinculada a Google." : "Puedes vincular tu cuenta para iniciar sesión rápido."}
+                                </p>
+                              </div>
+                            </div>
+
+                            {currentUser.googleId ? (
+                              <button
+                                onClick={handleUnlinkGoogle}
+                                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg transition-colors border border-white/5"
+                              >
+                                Desvincular cuenta
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => linkWithGoogle()}
+                                className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors border border-blue-500/20 shadow-md shadow-blue-500/10"
+                              >
+                                Vincular con Google
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1120,6 +1269,48 @@ export default function App() {
                         Estás conectado de manera segura. Tu perfil actual está limitado a las capacidades de tu rol ({currentUser.role}).
                       </p>
                     </div>
+
+                    {currentUser.level <= 2 && (
+                      <div className="bg-[#141414] rounded-2xl border border-white/5 p-6 shadow-lg space-y-4">
+                        <div>
+                          <h4 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
+                            <Activity className="w-4.5 h-4.5 text-blue-400" />
+                            Mi Actividad Reciente de Sesión
+                          </h4>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Últimos 5 registros de autenticación en tu cuenta.</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          {!myActivity ? (
+                            // Loading skeleton
+                            [1, 2, 3].map(i => (
+                              <div key={i} className="animate-pulse bg-[#0A0A0A] rounded-xl p-3 border border-white/5 h-14"></div>
+                            ))
+                          ) : myActivity.length === 0 ? (
+                            <p className="text-xs text-slate-500 italic p-4 text-center bg-[#0A0A0A] rounded-xl border border-white/5">No hay actividad reciente registrada.</p>
+                          ) : (
+                            myActivity.map(log => (
+                              <div key={log.id} className="bg-[#0A0A0A] rounded-xl p-3 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`shrink-0 w-2 h-2 rounded-full ${log.status === 'success' ? 'bg-emerald-500' : log.status === 'warn' ? 'bg-amber-500' : 'bg-red-500'}`}></span>
+                                    <span className="text-xs text-white font-semibold truncate">{log.action.replace(/_/g, ' ')}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 sm:gap-2 mt-1.5 text-[10px] text-slate-500 font-mono flex-wrap">
+                                    <span>{new Date(log.timestamp).toLocaleString()}</span>
+                                    <span className="hidden sm:inline">&bull;</span>
+                                    <span>{log.ipAddress}</span>
+                                  </div>
+                                </div>
+                                <div className="text-[10px] text-slate-400 sm:max-w-[100px] truncate" title={log.userAgent}>
+                                  {log.userAgent.includes('Chrome') ? 'Chrome' : log.userAgent.includes('Firefox') ? 'Firefox' : log.userAgent.includes('Safari') ? 'Safari' : 'Navegador'}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {currentUser.level >= 3 ? (
                       <>
@@ -1178,7 +1369,7 @@ export default function App() {
 
               {appTab === 'testing' && <TestAutomation />}
 
-              {appTab === 'manual' && <ManualTabs />}
+              {appTab === 'manual' && <ManualTabs currentUser={currentUser!} />}
             </div>
 
           </div>
@@ -1186,43 +1377,7 @@ export default function App() {
 
       </main>
 
-      {/* FOOTER AREA DISPLAYING THE CRITICAL EMAIL SANDBOX */}
-      <footer className="bg-[#0F0F0F] border-t border-white/10 mt-12 py-8 px-4 sm:px-6 lg:px-8 shadow-xs" id="app-footer">
-        <div className="max-w-7xl mx-auto space-y-8">
-          
-          {/* SANDBOX CONTAINER */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-            <div className="lg:col-span-1 space-y-3">
-              <span className="text-[10px] font-bold font-mono tracking-widest text-blue-400 uppercase">Servidor de Correo Interno</span>
-              <h2 className="text-base font-extrabold text-white tracking-tight leading-none">SMTP Relay Corporativo</h2>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Este panel captura el tráfico de correos de seguridad para restablecimientos de claves en tiempo real de forma local, sincronizado con la base persistente <code>database.json</code>.
-              </p>
-            </div>
-            
-            <div className="lg:col-span-2">
-              <EmailSandbox 
-                onSelectToken={(token) => {
-                  setResetToken(token);
-                  setView('auth');
-                  setSubView('reset');
-                  setApiSuccess("¡Vínculo de recuperación detectado! Por favor, ingrese su nueva clave.");
-                  playPing('success');
-                }}
-                refreshTrigger={refreshSeed}
-              />
-            </div>
-          </div>
 
-          <div className="pt-6 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-mono text-slate-500">
-            <span>UNSM - © 2026 SENTINEL | Plataforma de Control de Autenticación de Alta Gama</span>
-            <span className="flex items-center gap-1">
-              <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse" />
-              Sesión Única de Red: Activa en Contenedores de Cloud Run
-            </span>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

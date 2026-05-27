@@ -9,7 +9,7 @@ import {
   UserCheck, RefreshCw, Key, LogOut, CheckCircle, 
   Trash2, ShieldCheck, HeartPulse, Clock, Globe,
   UserPlus, PlusCircle, Shield, Award, Edit, Eye, EyeOff,
-  Activity, AlertTriangle, Monitor, ShieldEllipsis, Chrome, X
+  Activity, AlertTriangle, Monitor, ShieldEllipsis, Chrome, X, Eraser
 } from 'lucide-react';
 import { User, AuditLog, UserRole, CustomRole } from '../../types';
 import { 
@@ -73,6 +73,8 @@ export default function PanelGestorUsuarios({
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
   const [activeLockSelectUserId, setActiveLockSelectUserId] = useState<string | null>(null);
+  const [lockConfigValue, setLockConfigValue] = useState<number>(1);
+  const [lockConfigUnit, setLockConfigUnit] = useState<string>('minutes');
 
   const [activeSessions, setActiveSessions] = useState<any[]>([]);
   const [showCreateUser, setShowCreateUser] = useState(false);
@@ -129,6 +131,7 @@ export default function PanelGestorUsuarios({
   }, []);
 
   const hasFullAdminAccess = currentUser.level >= 5;
+
   const handleTimeLock = async (userId: string, durationMinutes: number | null) => {
     if (!hasModeratorAccess) return;
     setLoadingUserId(userId);
@@ -148,7 +151,6 @@ export default function PanelGestorUsuarios({
       if (response.ok) {
         onRefreshUsers();
         onRefreshAudit();
-        
       }
     } catch (e) {
       console.error(e);
@@ -157,6 +159,26 @@ export default function PanelGestorUsuarios({
       setActiveLockSelectUserId(null);
     }
   };
+
+  const handleAmnesty = async (userId: string) => {
+    if (!hasModeratorAccess) return;
+    setLoadingUserId(userId);
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/reset-fails`, {
+        method: 'PUT'
+      });
+      if (response.ok) {
+        onRefreshUsers();
+        onRefreshAudit();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingUserId(null);
+      setActiveLockSelectUserId(null);
+    }
+  };
+
   const handleChangeRole = async (userId: string, newRole: UserRole) => {
     if (!hasFullAdminAccess) return;
     setLoadingUserId(userId);
@@ -176,25 +198,8 @@ export default function PanelGestorUsuarios({
       setLoadingUserId(null);
     }
   };
-  const handleResetAttempts = async (userId: string) => {
-    if (!hasModeratorAccess) return;
-    setLoadingUserId(userId);
-    try {
-      const response = await fetch(`/api/admin/users/${userId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resetAttempts: true, isLocked: false })
-      });
-      if (response.ok) {
-        onRefreshUsers();
-        onRefreshAudit();
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingUserId(null);
-    }
-  };
+
+
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -648,18 +653,7 @@ export default function PanelGestorUsuarios({
                               </button>
                             )}
 
-                            {/* Unlock count */}
-                            {user.isLocked && hasModeratorAccess && user.id !== currentUser.id && (
-                              <button
-                                type="button"
-                                onClick={() => handleResetAttempts(user.id)}
-                                disabled={loadingUserId === user.id}
-                                className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-all font-semibold font-mono text-[10px] flex items-center gap-0.5 border border-blue-500/20 cursor-pointer"
-                                id={`btn-unlock-${user.id}`}
-                              >
-                                Desbloquear
-                              </button>
-                            )}
+
 
                             {/* Toggle locking */}
                             {hasModeratorAccess && user.id !== currentUser.id && (
@@ -686,61 +680,72 @@ export default function PanelGestorUsuarios({
                                 </button>
 
                                 {activeLockSelectUserId === user.id && (
-                                  <>
-                                    <div className="fixed inset-0 z-[90]" onClick={(e) => { e.stopPropagation(); setActiveLockSelectUserId(null); }} />
-                                    <div className="absolute top-full right-0 mt-1.5 w-44 rounded-xl shadow-2xl bg-[#141414] border border-white/10 ring-1 ring-black ring-opacity-5 z-[100] overflow-hidden" id={`lock-time-dropdown-menu-${user.id}`}>
-                                      <div className="py-1 text-left">
-                                      <div className="px-3 py-1 font-extrabold text-[9px] text-slate-500 uppercase tracking-widest border-b border-white/5">
-                                        Tiempo de Bloqueo
+                                  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => { e.stopPropagation(); setActiveLockSelectUserId(null); }}>
+                                    <div className="bg-[#141414] border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+                                      <h3 className="text-sm font-bold text-white mb-4">Configurar Bloqueo de Seguridad</h3>
+                                      <div className="space-y-4">
+                                        <div>
+                                          <label className="text-[11px] font-bold text-slate-300 block mb-1">Duración</label>
+                                          <div className="flex gap-2">
+                                            <input 
+                                              type="number" 
+                                              value={lockConfigValue}
+                                              onChange={(e) => setLockConfigValue(Number(e.target.value))}
+                                              disabled={lockConfigUnit === 'permanent'}
+                                              min="1"
+                                              className="w-full p-2 text-xs rounded-xl border border-white/10 bg-[#0A0A0A] text-slate-200 focus:outline-hidden focus:border-blue-500 disabled:opacity-50"
+                                            />
+                                            <select 
+                                              value={lockConfigUnit}
+                                              onChange={(e) => setLockConfigUnit(e.target.value)}
+                                              className="w-full p-2 text-xs rounded-xl border border-white/10 bg-[#0A0A0A] text-slate-200 focus:outline-hidden focus:border-blue-500"
+                                            >
+                                              <option value="minutes">Minutos</option>
+                                              <option value="hours">Horas</option>
+                                              <option value="days">Días</option>
+                                              <option value="permanent">Permanente</option>
+                                            </select>
+                                          </div>
+                                        </div>
                                       </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleTimeLock(user.id, null)}
-                                        className="block w-full text-left px-3 py-1.5 text-xs text-rose-450 hover:bg-white/5 font-semibold cursor-pointer"
-                                      >
-                                        Bloqueo Permanente
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleTimeLock(user.id, 1)}
-                                        className="block w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 font-semibold cursor-pointer"
-                                      >
-                                        1 Minuto (Prueba)
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleTimeLock(user.id, 5)}
-                                        className="block w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 cursor-pointer"
-                                      >
-                                        5 Minutos
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleTimeLock(user.id, 30)}
-                                        className="block w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 cursor-pointer"
-                                      >
-                                        30 Minutos
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleTimeLock(user.id, 1440)}
-                                        className="block w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 cursor-pointer"
-                                      >
-                                        24 Horas
-                                      </button>
-                                      <div className="border-t border-white/5 my-1" />
-                                      <button
-                                        type="button"
-                                        onClick={() => setActiveLockSelectUserId(null)}
-                                        className="block w-full text-center py-1 text-[10px] text-slate-500 hover:text-slate-300 font-bold cursor-pointer"
-                                      >
-                                        Cerrar menú
-                                      </button>
+                                      <div className="flex justify-end gap-2 mt-6">
+                                        <button 
+                                          type="button" 
+                                          onClick={() => setActiveLockSelectUserId(null)}
+                                          className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-300 text-xs rounded-lg transition-all cursor-pointer"
+                                        >
+                                          Cancelar
+                                        </button>
+                                        <button 
+                                          type="button" 
+                                          onClick={() => {
+                                            let minutes = lockConfigValue;
+                                            if (lockConfigUnit === 'hours') minutes = lockConfigValue * 60;
+                                            if (lockConfigUnit === 'days') minutes = lockConfigValue * 1440;
+                                            handleTimeLock(user.id, lockConfigUnit === 'permanent' ? null : minutes);
+                                          }}
+                                          className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg transition-all shadow-md active:scale-97 cursor-pointer"
+                                        >
+                                          Aplicar Bloqueo
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
-                                  </>
                                 )}
                               </div>
+                            )}
+
+                            {/* Clean fails */}
+                            {(user.failedAttempts > 0 || user.isLocked) && hasModeratorAccess && user.id !== currentUser.id && (
+                              <button
+                                type="button"
+                                onClick={() => handleAmnesty(user.id)}
+                                disabled={loadingUserId === user.id}
+                                className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg transition-all font-semibold font-mono text-[10px] flex items-center gap-0.5 border border-emerald-500/20 cursor-pointer"
+                                title="Limpiar Fallos"
+                              >
+                                <Eraser className="w-3.5 h-3.5" />
+                              </button>
                             )}
 
                             {/* Delete account */}
@@ -923,7 +928,34 @@ export default function PanelGestorUsuarios({
                                   >
                                     24 Horas
                                   </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTimeLock(user.id, 10080)}
+                                    className="block w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 cursor-pointer"
+                                  >
+                                    7 Días
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTimeLock(user.id, 43200)}
+                                    className="block w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 cursor-pointer"
+                                  >
+                                    30 Días
+                                  </button>
                                   <div className="border-t border-white/5 my-1" />
+                                  {user.failedAttempts > 0 && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAmnesty(user.id)}
+                                        className="block w-full text-left px-3 py-1.5 text-xs text-blue-400 hover:bg-white/5 font-semibold cursor-pointer"
+                                        title="Poner a 0 el historial de fallos de contraseña"
+                                      >
+                                        Limpiar Fallos
+                                      </button>
+                                      <div className="border-t border-white/5 my-1" />
+                                    </>
+                                  )}
                                   <button
                                     onClick={() => setActiveLockSelectUserId(null)}
                                     className="block w-full text-center py-1 text-[9px] text-slate-500 hover:text-slate-300 font-bold cursor-pointer"

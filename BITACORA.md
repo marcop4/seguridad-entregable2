@@ -57,7 +57,9 @@ Para mantener el flujo de trabajo de Marco, debes obedecer lo siguiente:
 2. **Refactorización de Hashes para Google:** Se modificó `/api/admin/password-hashes` (en `server.ts`) para incluir el `authType`. Ahora el frontend muestra una insignia azul `"OAUTH2_FEDERATED"` en lugar de `BCRYPT_BLOWFISH` para usuarios de Google.
 3. **UX Mobile en Navegación:** Se le agregó una clase global `.thin-scrollbar` a la navegación en `App.tsx` para que en móviles sea obvio que hay un scroll horizontal.
 4. **Mobile-First en Tabla de Hashes:** Se ocultó la tabla grande en pantallas pequeñas (`hidden md:table`) y se creó un bloque de tarjetas (divs apilados) amigable para celulares.
-5. **Limpieza del Manual:** Se eliminó por completo del código fuente (`ManualTabs.tsx`) cualquier evidencia o texto que mencionara que el sistema se probó en *Google Cloud Run* o *AI Studio*, tal como lo solicitó Marco.
+6. **Sanitización de Entradas (Input Sanitization) en Backend:** Se parcheó una vulnerabilidad/bug en el middleware `requirePrivilege` de `server.ts`. Express concatenaba headers `x-session-id` duplicados separándolos con coma (ej. `sess-123, sess-123`), lo que rompía la validación en la base de datos. Se implementó una sanitización estricta (`.split(',')[0].trim()`) para extraer siempre un token limpio y válido.
+7. **Prevención de DDoS en Cliente (SSE):** Se reparó una fuga crítica de conexión en el `EventSource` de notificaciones en `App.tsx`. Ahora el evento `onerror` fuerza el cierre de la conexión (`sse.close()`) e impone un *backoff* de 10 segundos antes de reintentar, evitando bucles infinitos de peticiones.
+8. **Fix de Condición de Carrera en Autenticación:** Se solucionó el error `401 Unauthorized` al cargar el panel 'Mi Actividad'. El fetch leía el header desde un estado de React que aún no terminaba de hidratarse. Se solucionó obteniendo el token directamente desde `localStorage`, garantizando peticiones siempre autenticadas.
 
 ---
 

@@ -22,6 +22,7 @@ export interface User {
   role: UserRole;
   level: number;
   passwordHash?: string;
+  googleId?: string | null;
   avatarUrl?: string;
   isLocked: boolean;
   lockedUntil?: string | null;

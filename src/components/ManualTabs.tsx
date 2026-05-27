@@ -4,10 +4,16 @@
  */
 
 import React, { useState } from 'react';
-import { BookOpen, ShieldCheck, Terminal, HeartPulse, HardDrive, Cpu, HelpCircle } from 'lucide-react';
+import { BookOpen, ShieldCheck, Terminal, HeartPulse, HardDrive, Cpu, HelpCircle, Layers, ZoomIn, ShieldAlert } from 'lucide-react';
+import { User } from '../types';
 
-export default function ManualTabs() {
+interface ManualTabsProps {
+  currentUser: User;
+}
+
+export default function ManualTabs({ currentUser }: ManualTabsProps) {
   const [activeTab, setActiveTab] = useState<'tech' | 'user' | 'maintenance'>('tech');
+
 
   return (
     <div className="bg-[#141414] rounded-2xl border border-white/5 shadow-2xl overflow-hidden" id="doc-section">
@@ -23,7 +29,7 @@ export default function ManualTabs() {
           id="btn-tab-tech"
         >
           <ShieldCheck className="w-4.5 h-4.5" />
-          Informe Técnico y Seguridad
+          Conceptos Generales
         </button>
         <button
           onClick={() => setActiveTab('user')}
@@ -35,20 +41,22 @@ export default function ManualTabs() {
           id="btn-tab-user"
         >
           <BookOpen className="w-4.5 h-4.5" />
-          Manual de Usuario
+          Manual de Operación
         </button>
-        <button
-          onClick={() => setActiveTab('maintenance')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-            activeTab === 'maintenance'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/15'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
-          }`}
-          id="btn-tab-maint"
-        >
-          <HeartPulse className="w-4.5 h-4.5" />
-          Plan de Mantenimiento
-        </button>
+        {currentUser.level >= 4 && (
+          <button
+            onClick={() => setActiveTab('maintenance')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'maintenance'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/15'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+            id="btn-tab-maint"
+          >
+            <HeartPulse className="w-4.5 h-4.5" />
+            Mantenimiento y Soporte
+          </button>
+        )}
       </div>
 
       {/* Tab Panels */}
@@ -107,6 +115,26 @@ export default function ManualTabs() {
                   La reconfiguración de accesos por correo genera un token temporal en memoria con exactamente 15 minutos de caducidad. En el instante preciso en el que el enlace es consumido en la pantalla de restablecimiento, el token es <strong>quemado permanentemente (pasa a null)</strong> del registro antes que se complete la confirmación del nuevo hash, garantizando inmunidad frente a repeticiones de solicitudes HTTP maliciosas.
                 </p>
               </div>
+
+              <div className="border border-white/5 bg-[#0A0A0A] rounded-xl p-5 space-y-3 md:col-span-2 lg:col-span-1">
+                <h4 className="font-semibold text-white flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-500/15 text-blue-400 text-xs font-bold border border-blue-500/20">5</span>
+                  Control de Acceso Basado en Roles (RBAC)
+                </h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  El sistema implementa una matriz de privilegios estricta. El backend utiliza middlewares para evaluar en tiempo real si el nivel de autorización del usuario que solicita la acción (1 al 5) es suficiente, impidiendo escalamiento de privilegios y garantizando que solo el personal autorizado acceda a la administración.
+                </p>
+              </div>
+
+              <div className="border border-white/5 bg-[#0A0A0A] rounded-xl p-5 space-y-3 md:col-span-2 lg:col-span-1">
+                <h4 className="font-semibold text-white flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-500/15 text-blue-400 text-xs font-bold border border-blue-500/20">6</span>
+                  Google Identity Platform (SSO)
+                </h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Integración moderna que delega la validación de identidad a la infraestructura global de Google mediante OAuth 2.0 y OpenID. El backend verifica la autenticidad del Credential Token directamente con los servidores de Google, permitiendo inicios de sesión ultra rápidos y auto-registro de usuarios bajo políticas estrictas.
+                </p>
+              </div>
             </div>
 
 
@@ -118,53 +146,203 @@ export default function ManualTabs() {
             <div>
               <h3 className="text-xl font-semibold text-white flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-blue-400" />
-                Guía de Usuario Interactiva
+                Manual Específico de Operación ({currentUser.role})
               </h3>
               <p className="mt-1 text-sm text-slate-400">
-                Pasos sencillos para demostrar las características avanzadas de seguridad en el sistema.
+                Guía de uso adaptada exclusivamente a tu nivel de privilegios y capacidades en el sistema.
               </p>
             </div>
 
             <div className="space-y-4">
-              <div className="flex gap-4 items-start pb-4 border-b border-white/5">
-                <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">01</span>
-                <div>
-                  <h4 className="font-semibold text-white text-sm md:text-base">Acceso Inicial y Prueba de Contraseñas Encriptadas</h4>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Inicia sesión utilizando las cuentas de demostración del sistema como el Administrador (<code>admin</code> / clave <code>password123</code>) u otros roles de prueba. Prueba a registrar un nuevo usuario con clave propia; la base persistente calculará de inmediato su hash seguro con BCrypt visible en el Sandbox de base de datos.
-                  </p>
-                </div>
-              </div>
+              
+              {/* SUPERADMIN / ADMIN MANUAL */}
+              {currentUser.level >= 4 && (
+                <>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">01</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Gestión y Creación de Usuarios (Consola)</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Desde la pestaña <strong>"Consola de Administrador"</strong>, puedes dar de alta nuevos perfiles con una contraseña inicial segura. Si eres SuperAdmin (Nivel 5), también puedes cambiar el nivel de privilegios (roles) de cualquier usuario en tiempo real y eliminar cuentas permanentemente del sistema.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">02</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Bloqueo Modular de Seguridad</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Usa el ícono de <strong>Escudo de Seguridad</strong> en un usuario para abrir el Modal de Bloqueo. Puedes restringir el acceso por Minutos, Horas, Días o aplicar un Bloqueo Permanente. Si el usuario ya está bloqueado, un clic en el mismo escudo rojo lo desbloqueará inmediatamente.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">03</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Limpieza de Fallos de Contraseña (Amnistía)</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Si un usuario se equivoca múltiples veces al iniciar sesión, aparecerá el botón de <strong>Escoba Verde (Limpiar Fallos)</strong> en su fila. Púlsalo para poner a cero su historial de intentos fallidos antes de que el sistema lo bloquee automáticamente.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">04</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Revocación de Sesiones Activas</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Si detectas una sesión anómala (indicada por el texto verde "ACTIVO" y la IP del dispositivo), usa el botón de <strong>Revocar</strong>. El sistema utilizará SSE para expulsar al usuario intruso en tiempo real.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">05</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Simulador Email Sandbox (Pie de página)</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Puedes auditar los correos de recuperación usando el panel inferior "Email Sandbox". Este entorno seguro atrapa los tokens de reseteo para que puedas depurar la entrega sin arriesgar datos en servidores externos.
+                      </p>
+                    </div>
+                  </div>
+                  {currentUser.level === 5 && (
+                    <div className="flex gap-4 items-start pt-4 border-t border-white/5">
+                      <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">06</span>
+                      <div>
+                        <h4 className="font-semibold text-white text-sm md:text-base">Suite de Pruebas Unitarias (Testing)</h4>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Dirígete a la pestaña <strong>"Suite de Pruebas Unitarias"</strong>. Como SuperAdmin, tienes acceso a la plataforma de Testing Automatizado para correr simulaciones de estrés, probar endpoints y validar criptografía.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-4 items-start pt-4 border-t border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">07</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Mitigación de User Enumeration (CWE-203 / CWE-208)</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        El sistema implementa una respuesta genérica y constante en los formularios de recuperación de contraseña. Al no revelar si un correo existe o no en la base de datos, mitigamos activamente vulnerabilidades de Enumeración de Usuarios, protegiendo la privacidad e identidad de todo el personal registrado.
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
 
-              <div className="flex gap-4 items-start pb-4 border-b border-white/5">
-                <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">02</span>
-                <div>
-                  <h4 className="font-semibold text-white text-sm md:text-base">Demostración de Sesión Única (Kicking / Revocación)</h4>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Abre el sistema en dos navegadores diferentes o en una ventana de incógnito paralela. Intenta iniciar sesión con el mismo usuario. El sistema mostrará un anuncio: "Existe una sesión previa activa". Si decides sobreescribirla, verás cómo de forma mágica e instantánea la pantalla del primer navegador cambia a un bloqueo avisándote que su sesión fue revocada remotamente.
-                  </p>
-                </div>
-              </div>
+              {/* AUDITOR MANUAL */}
+              {currentUser.level === 3 && (
+                <>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">01</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Navegación por el Timeline de Ataques (Consola)</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Dirígete a la pestaña <strong>"Consola de Auditor"</strong>. El panel principal contiene un gráfico avanzado de trazas de seguridad. Puedes visualizar fallos de login (ámbar) y bloqueos efectuados (rojo) agrupados en ventanas de 1h, 6h, 24h, 7D y 30D.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">02</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Drill-Down (Zoom Interactivo en Consola)</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Para investigar a fondo un ataque, <strong>haz clic directamente en cualquier punto o barra del gráfico</strong>. Esto hará un "zoom" a esa ventana temporal específica. Usa el botón "Volver al día" para retroceder.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">03</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Cacería de Amenazas (Consola)</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        La tabla de "Alertas Críticas del Periodo" se sincroniza automáticamente con tu nivel de zoom en la gráfica. Utilízala para ver el IP y usuario exactos.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">04</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Motor de Búsqueda de Bitácora</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        En la sección inferior de tu consola, cuentas con un motor de búsqueda inmutable. Puedes filtrar los logs por palabra clave o dirección IP.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start pt-4 border-t border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">05</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Suite de Pruebas Unitarias (Testing)</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Dirígete a la pestaña <strong>"Suite de Pruebas Unitarias"</strong>. Tienes autorización de Auditoría para ejecutar y revisar las pruebas automatizadas del sistema, comprobando que las políticas de seguridad se cumplen a cabalidad en el motor criptográfico.
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
 
-              <div className="flex gap-4 items-start pb-4 border-b border-white/5">
-                <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">03</span>
-                <div>
-                  <h4 className="font-semibold text-white text-sm md:text-base">Activación del Escudo Anti Fuerza Bruta</h4>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Cierra sesión e intenta acceder con un usuario válido ingresando una contraseña incorrecta repetidas veces. Observa cómo al tercer fallo, la interfaz bloquea el formulario por seguridad. Posteriormente, inicia sesión como Administrador y localiza la tarjeta de alerta roja, selecciona el registro de auditoría y desbloquea al usuario agredido de inmediato.
-                  </p>
-                </div>
-              </div>
+              {/* SUPPORT MANUAL (Level 2) */}
+              {currentUser.level === 2 && (
+                <>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">01</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Monitorización Básica de Tráfico</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Como personal de soporte, puedes observar el estado del tráfico y la salud de las conexiones del sistema. Esto es útil para confirmar si un usuario reporta un problema de acceso legítimo o si es una interrupción del servicio.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">02</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Revisión de Casos de Usuarios</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Puedes buscar el historial de actividad de un usuario específico usando el buscador rápido. Verifica cuándo fue su último inicio de sesión exitoso para ayudarle a diagnosticar olvidos de contraseña.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">03</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Escalamiento de Alertas</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Si observas anomalías que salen de tus privilegios (como bloqueos de cuenta recurrentes o múltiples intentos fallidos desde una IP extraña), tu labor es escalar un ticket a los niveles SuperAdmin o Auditor para que apliquen correcciones severas.
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
 
-              <div className="flex gap-4 items-start">
-                <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">04</span>
-                <div>
-                  <h4 className="font-semibold text-white text-sm md:text-base">Simulador de Recuperación de Cuenta por Email Sandbox</h4>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Si olvidas tu clave, haz clic en "¿Olvidaste tu contraseña?" e introduce tu correo. Se generará un token que llegará inmediatamente al buzón interactivo "Email Sandbox" en el banner inferior. Simplemente lee el correo adentro del panel, haz clic en el enlace entregado y modifique la contraseña de inmediato. El robot quemará el token para evitar duplicaciones.
-                  </p>
-                </div>
-              </div>
+              {/* BASIC USER MANUAL (Level 1) */}
+              {currentUser.level === 1 && (
+                <>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">01</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Mi Perfil y Conexión</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Desde tu panel principal puedes revisar los detalles de tu cuenta y asegurarte de que tu sesión es segura. Como usuario estándar, tus privilegios están limitados estrictamente a la gestión de tu propia cuenta (Solo Lectura).
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start pb-4 border-b border-white/5">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">02</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Vinculación Segura SSO (Google)</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Puedes vincular de manera segura tu cuenta de Google en la pestaña "Mi Conexión". Esto te permitirá iniciar sesión rápidamente sin necesidad de recordar contraseñas, aprovechando la infraestructura de validación OAuth de Google.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start">
+                    <span className="font-mono text-sm font-bold bg-white/5 text-slate-300 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border border-white/5">03</span>
+                    <div>
+                      <h4 className="font-semibold text-white text-sm md:text-base">Privacidad en la Recuperación de Cuentas</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Por estrictas políticas de seguridad del SOC (prevención de ataques de Enumeración de Usuarios), el sistema está diseñado para nunca confirmar ni negar en pantalla si un correo está registrado. Esto evita que atacantes externos descubran la identidad de los usuarios registrados en Sentinel.
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
+
             </div>
           </div>
         )}

@@ -34,7 +34,7 @@ Object.defineProperty(window, 'fetch', {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || "AUN_NO_CONFIGURADO"}>
+    <GoogleOAuthProvider clientId={(import.meta as any).env.VITE_GOOGLE_CLIENT_ID || "AUN_NO_CONFIGURADO"}>
       <App />
     </GoogleOAuthProvider>
   </StrictMode>,
