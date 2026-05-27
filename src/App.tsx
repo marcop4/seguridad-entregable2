@@ -129,6 +129,22 @@ export default function App() {
     }
   }, []);
 
+  // Detect Password Reset token in URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromUrl = params.get('token');
+    const isResetPath = window.location.pathname.includes('reset-password');
+
+    if (tokenFromUrl || isResetPath) {
+      if (tokenFromUrl) setResetToken(tokenFromUrl);
+      setSubView('reset');
+      setView('auth');
+      
+      // Clean up the URL to prevent token leakage in history
+      window.history.replaceState({}, document.title, '/');
+    }
+  }, []);
+
   // Cross-tab split-brain synchronization
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
@@ -460,7 +476,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: regUsername,
-          email: regEmail,
+          email: `${regEmail}@sentinel.ai`,
           fullName: regFullName,
           password: regPassword
         })
@@ -523,7 +539,7 @@ export default function App() {
       const response = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: forgotEmail })
+        body: JSON.stringify({ email: `${forgotEmail}@sentinel.ai` })
       });
       const data = await response.json();
 
@@ -592,8 +608,19 @@ export default function App() {
       {/* HEADER BAR */}
       <header className="bg-[#0F0F0F] border-b border-white/10 sticky top-0 z-40 transition-colors" id="app-nav-bar">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm shadow-blue-500/20" id="brand-launcher">
+          <div 
+            className="flex items-center gap-2.5 cursor-pointer group hover:opacity-80 transition-opacity"
+            onClick={() => {
+              window.history.replaceState({}, document.title, '/');
+              if (currentUser) {
+                setAppTab('dashboard');
+              } else {
+                setSubView('login');
+              }
+            }}
+            title="Volver al Inicio"
+          >
+            <div className="h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-shadow" id="brand-launcher">
               <SentinelLogo className="w-7 h-7" />
             </div>
             <div className="flex flex-col justify-center translate-y-[1px]">
@@ -639,7 +666,9 @@ export default function App() {
                       En Línea
                     </span>
                   </div>
-                  <p className="text-[9px] font-mono font-bold text-blue-400 uppercase">{currentUser.role}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[9px] font-mono font-bold text-blue-400 uppercase">{currentUser.role}</p>
+                  </div>
                 </div>
                 <button
                   onClick={handleLogout}
@@ -867,16 +896,21 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300 block text-left">Correo Electrónico</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="ej. paco@example.com"
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
-                    className="w-full p-2.5 text-xs rounded-xl border border-white/10 bg-[#0A0A0A] text-slate-200 focus:outline-hidden focus:border-blue-500 placeholder-slate-600"
-                    id="reg-email"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block text-left">Correo Corporativo</label>
+                  <div className="flex items-stretch rounded-xl border border-white/10 bg-[#0A0A0A] overflow-hidden focus-within:border-blue-500 transition-colors">
+                    <input
+                      type="text"
+                      required
+                      placeholder="ej. paco"
+                      value={regEmail}
+                      onChange={(e) => setRegEmail(e.target.value.toLowerCase().replace(/\s+/g, '').replace(/@.*$/, ''))}
+                      className="w-full p-2.5 text-xs bg-transparent text-slate-200 focus:outline-hidden placeholder-slate-600"
+                      id="reg-email"
+                    />
+                    <div className="flex items-center px-3 border-l border-white/10 bg-white/5 text-xs font-mono text-slate-500 select-none pointer-events-none">
+                      @sentinel.ai
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
@@ -968,16 +1002,21 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300 block text-left">Correo Electrónico de la Cuenta</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="ej. admin@example.com"
-                    value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
-                    className="w-full p-2.5 text-xs rounded-xl border border-white/10 bg-[#0A0A0A] text-slate-200 focus:outline-hidden focus:border-blue-500 placeholder-slate-600"
-                    id="forgot-email-input"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block text-left">Credencial de Recuperación</label>
+                  <div className="flex items-stretch rounded-xl border border-white/10 bg-[#0A0A0A] overflow-hidden focus-within:border-blue-500 transition-colors">
+                    <input
+                      type="text"
+                      required
+                      placeholder="ej. admin"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value.toLowerCase().replace(/\s+/g, '').replace(/@.*$/, ''))}
+                      className="w-full p-2.5 text-xs bg-transparent text-slate-200 focus:outline-hidden placeholder-slate-600"
+                      id="forgot-email-input"
+                    />
+                    <div className="flex items-center px-3 border-l border-white/10 bg-white/5 text-xs font-mono text-slate-500 select-none pointer-events-none">
+                      @sentinel.ai
+                    </div>
+                  </div>
                 </div>
 
                 <button
@@ -1020,7 +1059,7 @@ export default function App() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-300 block text-left">Token de Seguridad (Automático)</label>
                   <input
-                    type="text"
+                    type="password"
                     required
                     readOnly
                     placeholder="Token temporario"
@@ -1167,6 +1206,7 @@ export default function App() {
                         <div className="min-w-0 flex-1">
                           <h3 className="text-base font-bold text-white leading-snug break-words">{currentUser.fullName}</h3>
                           <p className="text-xs text-slate-500 font-mono mt-1">@{currentUser.username}</p>
+                          <p className="text-xs text-slate-400 font-mono mt-0.5 break-all leading-tight">{currentUser.email}</p>
                           <div className="mt-2 text-[10px] font-bold font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-lg p-1 px-2 w-fit">
                             Perfil: {currentUser.role.toUpperCase()}
                           </div>

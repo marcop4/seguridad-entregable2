@@ -506,7 +506,7 @@ async function startServer() {
     return (req: express.Request, res: express.Response, next: express.NextFunction) => {
       const rawSessionId = req.headers['x-session-id'] as string;
       const sessionId = rawSessionId ? rawSessionId.split(',')[0].trim() : '';
-      
+
       console.log(`[AUTH GUARD] Header recibido en ${req.originalUrl}:`, rawSessionId, '-> Limpio:', sessionId);
 
       if (!sessionId) {
@@ -515,7 +515,7 @@ async function startServer() {
 
       const db = loadDatabase();
       const user = db.users.find(u => u.activeSessionId === sessionId);
-      
+
       console.log(`[AUTH GUARD] Usuario encontrado para la sesión:`, user ? user.username : 'Ninguno');
 
       if (!user) {
