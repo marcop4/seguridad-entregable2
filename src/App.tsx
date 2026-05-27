@@ -16,8 +16,10 @@ import ManualTabs from './components/ManualTabs';
 import TestAutomation from './components/TestAutomation';
 import SentinelLogo from './components/SentinelLogo';
 import AdminPanel from './components/AdminPanel';
+import { useToast } from './context/ToastContext';
 
 export default function App() {
+  const { showToast } = useToast();
   // Session persistence
   const [currentUser, setCurrentUser] = useState<Omit<User, 'passwordHash' | 'recoveryToken'> | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -176,7 +178,15 @@ export default function App() {
         notifRes = await fetch('/api/admin/notifications');
       }
 
-      if (uRes?.ok) setUsersList(await uRes.json());
+      if (uRes?.ok) {
+        const data = await uRes.json();
+        setUsersList(data);
+        const me = data.find((u: any) => u.id === currentUser.id);
+        if (me && (me.level !== currentUser.level || me.role !== currentUser.role)) {
+          setCurrentUser(me);
+          localStorage.setItem('secure_auth_user', JSON.stringify(me));
+        }
+      }
       if (logRes?.ok) setAuditLogs(await logRes.json());
       if (notifRes?.ok) setNotifications(await notifRes.json());
     } catch (e) {
@@ -301,6 +311,11 @@ export default function App() {
         setTimeout(() => {
           setShakeForm(false);
         }, 500);
+        
+        if (response.status === 429) {
+          showToast('Contraseña incorrecta. Cuenta suspendida temporalmente por seguridad. Intente en 2 minutos.', 'warning');
+        }
+        
         return;
       }
 
@@ -312,6 +327,10 @@ export default function App() {
       }
 
       if (data.success && data.user) {
+        localStorage.removeItem('secure_auth_user');
+        localStorage.removeItem('secure_auth_token');
+        localStorage.removeItem('secure_auth_session_id');
+
         localStorage.setItem('secure_auth_user', JSON.stringify(data.user));
         localStorage.setItem('secure_auth_token', data.token || '');
         localStorage.setItem('secure_auth_session_id', data.sessionId || '');
@@ -364,6 +383,10 @@ export default function App() {
         }
 
         if (data.success && data.user) {
+          localStorage.removeItem('secure_auth_user');
+          localStorage.removeItem('secure_auth_token');
+          localStorage.removeItem('secure_auth_session_id');
+
           localStorage.setItem('secure_auth_user', JSON.stringify(data.user));
           localStorage.setItem('secure_auth_token', data.token || '');
           localStorage.setItem('secure_auth_session_id', data.sessionId || '');
@@ -514,7 +537,9 @@ export default function App() {
       }).catch(() => { }); // Fire and forget
     } catch (e) { }
 
-    localStorage.clear();
+    localStorage.removeItem('secure_auth_user');
+    localStorage.removeItem('secure_auth_token');
+    localStorage.removeItem('secure_auth_session_id');
     setCurrentUser(null);
     setSessionToken(null);
     setCurrentSessionId(null);
@@ -1151,7 +1176,7 @@ export default function App() {
                     id="tab-btn-admin"
                   >
                     <Settings className="w-4 h-4" />
-                    {currentUser.level >= 5 ? "Consola de Administrador" : currentUser.level === 4 ? "Consola de Moderador" : "Consola de Auditor"}
+                    {currentUser.level >= 4 ? "Consola de Administrador" : "Consola de Auditor"}
                   </button>
                 )}
 

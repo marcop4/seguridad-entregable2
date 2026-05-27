@@ -366,7 +366,7 @@ export default function PanelRolesJerarquia({
                               </button>
                             </div>
                           ) : (
-                            !(role.key === 'admin' || role.key === 'user' || role.id === 'role-admin' || role.id === 'role-user') && currentUser.level === 5 ? (
+                            !(role.key === 'superadmin' || role.key === 'admin' || role.key === 'user' || role.id === 'role-superadmin' || role.id === 'role-admin' || role.id === 'role-user') && currentUser.level === 5 ? (
                               <div className="flex gap-1.5 justify-end">
                                 <button
                                   onClick={() => {
@@ -472,7 +472,7 @@ export default function PanelRolesJerarquia({
                           </div>
                         ) : (
                           <div className="flex gap-1.5">
-                            {!(role.key === 'admin' || role.key === 'user' || role.id === 'role-admin' || role.id === 'role-user') && currentUser.level === 5 ? (
+                            {!(role.key === 'superadmin' || role.key === 'admin' || role.key === 'user' || role.id === 'role-superadmin' || role.id === 'role-admin' || role.id === 'role-user') && currentUser.level === 5 ? (
                               <>
                                 <button
                                   onClick={() => {

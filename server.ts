@@ -35,7 +35,7 @@ const DEFAULT_USERS: User[] = [
     email: "root@sentinel.ai",
     username: "root_global",
     fullName: "SuperAdmin Root Global",
-    role: "admin",
+    role: "superadmin" as any,
     level: 5,
     passwordHash: bcrypt.hashSync("password123", 10),
     avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop",
@@ -55,7 +55,7 @@ const DEFAULT_USERS: User[] = [
     email: "admin@sentinel.ai",
     username: "admin_local",
     fullName: "Administrador de Accesos",
-    role: "moderator",
+    role: "admin",
     level: 4,
     passwordHash: bcrypt.hashSync("password123", 10),
     avatarUrl: "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop",
@@ -131,30 +131,46 @@ function loadDatabase(): DatabaseData {
       if (!parsed.securityLogs) parsed.securityLogs = [];
 
       const defaultRoles: CustomRole[] = [
-        {
-          id: "role-admin",
-          name: "Administrador",
-          key: "admin",
-          description: "Acceso total al sistema y gestión de usuarios (Nivel 1).",
-          privilegeLevel: 5,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: "role-moderator",
-          name: "Moderador",
-          key: "moderator",
-          description: "Gestión de accesos y monitoreo SIEM (Nivel 2).",
-          privilegeLevel: 3,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: "role-user",
-          name: "Usuario",
-          key: "user",
-          description: "Usuario estándar con privilegios de lectura básica (Nivel 3).",
-          privilegeLevel: 1,
-          createdAt: new Date().toISOString()
-        }
+      {
+        id: "role-superadmin",
+        name: "SuperAdmin",
+        key: "superadmin",
+        description: "Root Global con máximo privilegio (Nivel 5).",
+        privilegeLevel: 5,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "role-admin",
+        name: "Administrador",
+        key: "admin",
+        description: "Gestión de accesos y configuración local (Nivel 4).",
+        privilegeLevel: 4,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "role-moderator",
+        name: "Moderador",
+        key: "moderator",
+        description: "Gestión de personal y accesos operativos (Nivel 4).",
+        privilegeLevel: 4,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "role-auditor",
+        name: "Auditor SIEM",
+        key: "auditor",
+        description: "Auditor de trazas y monitoreo de eventos (Nivel 3).",
+        privilegeLevel: 3,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "role-user",
+        name: "Usuario",
+        key: "user",
+        description: "Lectura básica e invitado (Nivel 1).",
+        privilegeLevel: 1,
+        createdAt: new Date().toISOString()
+      }
       ];
 
       // Ensure arrays exist and seed roles if missing
@@ -175,15 +191,39 @@ function loadDatabase(): DatabaseData {
       });
 
       let autoUnlocked = false;
+      let hierarchyMigrated = false;
+
+      // Ensure proper hierarchy levels for existing core roles
+      db.customRoles.forEach(r => {
+        if (r.key === 'admin' && r.privilegeLevel !== 4) { r.privilegeLevel = 4; hierarchyMigrated = true; }
+        if (r.key === 'moderator' && r.privilegeLevel !== 4) { r.privilegeLevel = 4; hierarchyMigrated = true; }
+        if (r.key === 'auditor' && r.privilegeLevel !== 3) { r.privilegeLevel = 3; hierarchyMigrated = true; }
+        if (r.key === 'user' && r.privilegeLevel !== 1) { r.privilegeLevel = 1; hierarchyMigrated = true; }
+      });
+
       db.users.forEach(u => {
-        if (u.role === "admin" && (u.isLocked || u.failedAttempts > 0)) {
+        // Upgrade root to superadmin if legacy DB
+        if (u.username === 'root_global' && u.role === 'admin') {
+          u.role = 'superadmin' as any;
+          u.level = 5;
+          hierarchyMigrated = true;
+        } else {
+          // Sync existing user levels with custom role levels
+          const matchedRole = db.customRoles.find(r => r.key === u.role);
+          if (matchedRole && u.level !== matchedRole.privilegeLevel) {
+            u.level = matchedRole.privilegeLevel;
+            hierarchyMigrated = true;
+          }
+        }
+
+        if (u.level === 5 && (u.isLocked || u.failedAttempts > 0)) {
           u.isLocked = false;
           u.failedAttempts = 0;
           autoUnlocked = true;
         }
       });
 
-      if (autoUnlocked) {
+      if (autoUnlocked || hierarchyMigrated) {
         saveDatabase(db);
       }
       return db;
@@ -495,7 +535,8 @@ async function startServer() {
 
     switch (normalizedKey) {
       case 'admin': return 5;
-      case 'moderator': return 4;
+      case 'moderator':
+      case 'moderador': return 4;
       case 'auditor': return 3;
       default: return 1;
     }
@@ -1338,15 +1379,7 @@ async function startServer() {
     // Return safe data (password hash omitted)
     let safeUsers = db.users.map(({ passwordHash, ...rest }) => rest);
 
-    // Vertical Control Constraint:
-    if (callerPrivilege < 5) {
-      safeUsers = safeUsers.filter(u => {
-        if (u.id === currentUser.id) return true;
-
-        const targetPrivilege = getPrivilegeLevel(db, u.role);
-        return targetPrivilege < callerPrivilege;
-      });
-    }
+    // Vertical Control Constraint Removido: Todos los roles autorizados pueden ver la lista completa por transparencia corporativa.
 
     res.json(safeUsers);
   });
@@ -1379,7 +1412,7 @@ async function startServer() {
       }
       detailsArr.push(`Cambió rol de ${user.role} a ${role}`);
       user.role = role as UserRole;
-      if (role === 'admin') {
+      if (getPrivilegeLevel(db, role) === 5) {
         user.isLocked = false;
         user.failedAttempts = 0;
         user.lockedUntil = null;
@@ -1387,8 +1420,8 @@ async function startServer() {
     }
 
     if (isLocked !== undefined && isLocked !== user.isLocked) {
-      if (user.role === 'admin' && isLocked) {
-        return res.status(400).json({ success: false, message: "Los administradores poseen inmunidad y no pueden ser bloqueados." });
+      if (getPrivilegeLevel(db, user.role) === 5 && isLocked) {
+        return res.status(400).json({ success: false, message: "Los administradores globales poseen inmunidad y no pueden ser bloqueados." });
       }
       detailsArr.push(isLocked ? `Bloqueó la cuenta` : `Desbloqueó la cuenta`);
       user.isLocked = isLocked;
@@ -1481,6 +1514,10 @@ async function startServer() {
     const callerPrivilege = (req as any).userPrivilege;
     const targetPrivilege = getPrivilegeLevel(db, targetUser.role);
 
+    if (callerPrivilege === 4 && targetPrivilege > 1) {
+      return res.status(403).json({ success: false, message: "403 Forbidden: El moderador solo puede eliminar usuarios de lectura básica" });
+    }
+
     if (callerPrivilege < 5 && targetPrivilege >= callerPrivilege) {
       return res.status(403).json({ success: false, message: "Acceso Denegado. Control Vertical: No puede eliminar cuentas de un nivel jerárquico igual o superior al suyo." });
     }
@@ -1528,7 +1565,7 @@ async function startServer() {
       username,
       fullName,
       role: role as UserRole,
-      level: role === 'admin' ? 5 : role === 'moderator' ? 4 : role === 'auditor' ? 3 : 1,
+      level: getPrivilegeLevel(db, role),
       passwordHash: bcrypt.hashSync(password, 10),
       avatarUrl: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(username)}`,
       isLocked: false,
@@ -1604,7 +1641,7 @@ async function startServer() {
     const role = db.customRoles[roleIndex];
 
     // Protection for Core Roles
-    if (role.key === 'admin' || role.key === 'user' || role.id === 'role-admin' || role.id === 'role-user') {
+    if (role.key === 'superadmin' || role.key === 'admin' || role.key === 'user' || role.id === 'role-admin' || role.id === 'role-user' || role.id === 'role-superadmin') {
       return res.status(403).json({ success: false, message: "Acción denegada: Rol del sistema protegido contra edición." });
     }
 
@@ -1638,7 +1675,7 @@ async function startServer() {
     const deletedRole = db.customRoles[roleIndex];
 
     // Protection for Core Roles
-    if (deletedRole.key === 'admin' || deletedRole.key === 'user' || deletedRole.id === 'role-admin' || deletedRole.id === 'role-user') {
+    if (deletedRole.key === 'superadmin' || deletedRole.key === 'admin' || deletedRole.key === 'user' || deletedRole.id === 'role-admin' || deletedRole.id === 'role-user' || deletedRole.id === 'role-superadmin') {
       return res.status(403).json({ success: false, message: "Acción denegada: Rol del sistema protegido contra eliminación." });
     }
 

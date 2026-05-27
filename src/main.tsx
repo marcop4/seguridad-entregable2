@@ -2,6 +2,7 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import App from './App.tsx';
+import { ToastProvider } from './context/ToastContext';
 import './index.css';
 
 // Intercept fetch to automatically append our authentication headers for guarded endpoints
@@ -35,7 +36,9 @@ Object.defineProperty(window, 'fetch', {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <GoogleOAuthProvider clientId={(import.meta as any).env.VITE_GOOGLE_CLIENT_ID || "AUN_NO_CONFIGURADO"}>
-      <App />
+      <ToastProvider>
+        <App />
+      </ToastProvider>
     </GoogleOAuthProvider>
   </StrictMode>,
 );
