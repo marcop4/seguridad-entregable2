@@ -13,9 +13,9 @@ import {
 } from 'lucide-react';
 import { User, AuditLog, UserRole, CustomRole } from '../../types';
 import { 
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line 
 } from 'recharts';
+import { useToast } from '../../context/ToastContext';
 
 
 interface AdminPanelProps {
@@ -69,6 +69,7 @@ export default function PanelGestorUsuarios({
   onRefreshAudit
 }: AdminPanelProps) {
   // --- STATES FOR USERS ---
+  const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
@@ -91,7 +92,7 @@ export default function PanelGestorUsuarios({
 
   const isAuditorOnly = currentUser.level === 3;
   const isSupportOnly = currentUser.level === 2;
-  const hasModeratorAccess = currentUser.level >= 4;
+  const canManageAccess = currentUser.level >= 4;
 
   const fetchActiveSessions = async () => {
     try {
@@ -106,12 +107,14 @@ export default function PanelGestorUsuarios({
   };
 
   useEffect(() => {
-    fetchActiveSessions();
-    const interval = setInterval(() => {
+    if (canManageAccess) {
       fetchActiveSessions();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
+      const interval = setInterval(() => {
+        fetchActiveSessions();
+      }, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [canManageAccess]);
 
   
   const [rolesList, setRolesList] = useState<CustomRole[]>([]);
@@ -130,10 +133,8 @@ export default function PanelGestorUsuarios({
     fetchRoles();
   }, []);
 
-  const hasFullAdminAccess = currentUser.level >= 5;
-
   const handleTimeLock = async (userId: string, durationMinutes: number | null) => {
-    if (!hasModeratorAccess) return;
+    if (!canManageAccess) return;
     setLoadingUserId(userId);
     let lockedUntil: string | null = null;
     if (durationMinutes !== null) {
@@ -161,7 +162,7 @@ export default function PanelGestorUsuarios({
   };
 
   const handleAmnesty = async (userId: string) => {
-    if (!hasModeratorAccess) return;
+    if (!canManageAccess) return;
     setLoadingUserId(userId);
     try {
       const response = await fetch(`/api/admin/users/${userId}/reset-fails`, {
@@ -180,7 +181,7 @@ export default function PanelGestorUsuarios({
   };
 
   const handleChangeRole = async (userId: string, newRole: UserRole) => {
-    if (!hasFullAdminAccess) return;
+    if (!canManageAccess) return;
     setLoadingUserId(userId);
     try {
       const response = await fetch(`/api/admin/users/${userId}`, {
@@ -191,9 +192,16 @@ export default function PanelGestorUsuarios({
       if (response.ok) {
         onRefreshUsers();
         onRefreshAudit();
+        showToast("Rol actualizado con éxito", 'success');
+      } else {
+        const errorData = await response.json();
+        showToast(errorData.message || "Error al actualizar el rol o privilegio insuficiente", 'error');
+        onRefreshUsers(); // Revierte el valor
       }
     } catch (e) {
       console.error(e);
+      showToast("Error de red al actualizar el rol", 'error');
+      onRefreshUsers(); // Revierte el valor
     } finally {
       setLoadingUserId(null);
     }
@@ -212,10 +220,14 @@ export default function PanelGestorUsuarios({
     }
 
     try {
+      const payload = {
+        ...newUserForm,
+        email: `${newUserForm.email}@sentinel.ai`
+      };
       const response = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newUserForm)
+        body: JSON.stringify(payload)
       });
       const data = await response.json();
       if (response.ok) {
@@ -260,6 +272,11 @@ export default function PanelGestorUsuarios({
     const currentRole = users.find(u => u.id === userId)?.role || "";
     if (currentRole === 'admin') {
       alert("No se puede eliminar un perfil SuperAdmin (Nivel 5) desde la interfaz.");
+      return;
+    }
+    const targetPrivilege = rolesList.find(r => r.key === currentRole)?.privilegeLevel || 1;
+    if (targetPrivilege >= currentUser.level) {
+      alert("Los moderadores solo pueden eliminar usuarios de lectura básica.");
       return;
     }
     if (!window.confirm("CRÍTICO: ¿Estás seguro de eliminar PERMANENTEMENTE a este usuario?")) return;
@@ -311,7 +328,7 @@ export default function PanelGestorUsuarios({
     return matchesSearch && matchesRole;
   });
 
-  return (
+return (
 <div className="space-y-8 animate-fade-in" id="users-parent-view">
           
           {/* DASHBOARD DE SEGURIDAD */}
@@ -348,7 +365,7 @@ export default function PanelGestorUsuarios({
                             <p className="text-[7px] font-mono">{session.ipAddress}</p>
                           </td>
                           <td className="py-2 text-right">
-                            {hasModeratorAccess && (currentUser.level > session.level || currentUser.level >= 5) && (
+                            {canManageAccess && (currentUser.level > session.level || currentUser.level >= 5) && (
                               <button
                                 onClick={() => handleRevokeSession(session.userId)}
                                 className="p-1 px-1.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded border border-red-500/20 transition-all cursor-pointer"
@@ -391,7 +408,7 @@ export default function PanelGestorUsuarios({
 
               {/* Action buttons + search */}
               <div className="flex flex-wrap gap-2 items-center">
-                {hasModeratorAccess && (
+                {canManageAccess && (
                   <button
                     onClick={() => setShowCreateUser(!showCreateUser)}
                     className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
@@ -421,6 +438,7 @@ export default function PanelGestorUsuarios({
                   <option value="all">Filtro: Todos</option>
                   <option value="admin">Administrador</option>
                   <option value="moderator">Moderador</option>
+                  <option value="auditor">Auditor SIEM</option>
                   <option value="user">Usuario Final</option>
                 </select>
               </div>
@@ -464,15 +482,20 @@ export default function PanelGestorUsuarios({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-300 block">Correo Electrónico</label>
-                    <input
-                      type="email"
-                      placeholder="ej. juan@gmail.com"
-                      required
-                      value={newUserForm.email}
-                      onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
-                      className="w-full p-2 text-xs rounded-xl border border-white/10 bg-[#141414] text-slate-200 focus:outline-hidden focus:border-blue-500"
-                    />
+                    <label className="text-[11px] font-bold text-slate-300 block">Correo Electrónico (Credencial corporativa)</label>
+                    <div className="flex bg-[#141414] border border-white/10 rounded-xl overflow-hidden focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
+                      <input
+                        type="text"
+                        placeholder="ej. juan.perez"
+                        required
+                        value={newUserForm.email}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value.toLowerCase().trim() })}
+                        className="w-full p-2 text-xs bg-transparent text-slate-200 outline-none"
+                      />
+                      <div className="px-3 py-2 bg-white/5 border-l border-white/5 flex items-center justify-center text-[10px] text-slate-500 font-mono select-none">
+                        @sentinel.ai
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-1">
@@ -499,15 +522,24 @@ export default function PanelGestorUsuarios({
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-300 block">Rol y Atributo RBAC</label>
-                  <select
-                    value={newUserForm.role}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value as UserRole })}
-                    className="w-full p-2 text-xs rounded-xl border border-white/10 bg-[#141414] text-slate-200 focus:outline-hidden focus:border-blue-500"
-                  >
-                    {rolesList.map(r => (
-                      <option key={r.id} value={r.key}>{r.name}</option>
-                    ))}
-                  </select>
+                  {currentUser.level === 4 ? (
+                    <div className="w-full p-2 text-xs rounded-xl border border-white/10 bg-[#141414] text-slate-400 font-mono flex items-center justify-between cursor-not-allowed opacity-80">
+                      <span>Usuario Final</span>
+                      <Shield className="w-3.5 h-3.5 text-slate-500" />
+                    </div>
+                  ) : (
+                    <select
+                      value={newUserForm.role}
+                      onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value as UserRole })}
+                      className="w-full p-2 text-xs rounded-xl border border-white/10 bg-[#141414] text-slate-200 focus:outline-hidden focus:border-blue-500"
+                    >
+                      {rolesList
+                        .filter(r => r.privilegeLevel < currentUser.level)
+                        .map(r => (
+                          <option key={r.id} value={r.key}>{r.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {createUserError && (
@@ -582,23 +614,42 @@ export default function PanelGestorUsuarios({
                         </td>
 
                         <td className="py-4 px-4">
-                          {hasFullAdminAccess && user.id !== currentUser.id ? (
-                            <select
-                              value={user.role}
-                              onChange={(e) => handleChangeRole(user.id, e.target.value as UserRole)}
-                              disabled={loadingUserId === user.id}
-                              className="bg-[#0A0A0A] border border-white/5 rounded-md p-1 font-medium text-xs text-slate-300 focus:outline-hidden"
-                              id={`select-role-${user.id}`}
-                            >
-                              {rolesList.map(r => (
-                                <option key={r.id} value={r.key}>{r.name}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="font-semibold text-slate-400 capitalize font-mono text-[11px]">
-                              {rolesList.find(r => r.key === user.role)?.name || user.role}
-                            </span>
-                          )}
+                          {(() => {
+                            const userPrivilege = rolesList.find(r => r.key === user.role)?.privilegeLevel || 1;
+                            const isModerator = currentUser.level === 4;
+                            
+                            const shouldDisable = loadingUserId === user.id || (isModerator && userPrivilege !== 1);
+                            const canShowSelect = canManageAccess && userPrivilege < currentUser.level && user.id !== currentUser.id;
+
+                            if (canShowSelect) {
+                              const optionsToRender = isModerator 
+                                ? rolesList.filter(r => r.privilegeLevel === 1) 
+                                : rolesList.filter(r => r.privilegeLevel < currentUser.level);
+
+                              return (
+                                <select
+                                  value={user.role}
+                                  onChange={(e) => handleChangeRole(user.id, e.target.value as UserRole)}
+                                  disabled={shouldDisable}
+                                  className={`bg-[#0A0A0A] border border-white/5 rounded-md p-1 font-medium text-xs text-slate-300 focus:outline-hidden ${shouldDisable ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  id={`select-role-${user.id}`}
+                                >
+                                  {shouldDisable && !optionsToRender.find(r => r.key === user.role) ? (
+                                     <option value={user.role}>{rolesList.find(r => r.key === user.role)?.name || user.role}</option>
+                                  ) : null}
+                                  {optionsToRender.map(r => (
+                                    <option key={r.id} value={r.key}>{r.name}</option>
+                                  ))}
+                                </select>
+                              );
+                            }
+
+                            return (
+                              <span className="font-semibold text-slate-400 capitalize font-mono text-[11px]">
+                                {rolesList.find(r => r.key === user.role)?.name || user.role}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         <td className="py-4 px-4">
@@ -640,7 +691,7 @@ export default function PanelGestorUsuarios({
                         <td className="py-4 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
                             {/* Revoke active session */}
-                            {user.activeSessionId && hasModeratorAccess && user.id !== currentUser.id && (
+                            {user.activeSessionId && canManageAccess && (rolesList.find(r => r.key === user.role)?.privilegeLevel || 1) < currentUser.level && user.id !== currentUser.id && (
                               <button
                                 type="button"
                                 onClick={() => handleRevokeSession(user.id)}
@@ -656,7 +707,7 @@ export default function PanelGestorUsuarios({
 
 
                             {/* Toggle locking */}
-                            {hasModeratorAccess && user.id !== currentUser.id && (
+                            {canManageAccess && (rolesList.find(r => r.key === user.role)?.privilegeLevel || 1) < currentUser.level && user.id !== currentUser.id && (
                               <div className="relative inline-block text-left" id={`lock-selector-container-${user.id}`}>
                                 <button
                                   type="button"
@@ -736,7 +787,7 @@ export default function PanelGestorUsuarios({
                             )}
 
                             {/* Clean fails */}
-                            {(user.failedAttempts > 0 || user.isLocked) && hasModeratorAccess && user.id !== currentUser.id && (
+                            {(user.failedAttempts > 0 || user.isLocked) && canManageAccess && (rolesList.find(r => r.key === user.role)?.privilegeLevel || 1) < currentUser.level && user.id !== currentUser.id && (
                               <button
                                 type="button"
                                 onClick={() => handleAmnesty(user.id)}
@@ -749,7 +800,7 @@ export default function PanelGestorUsuarios({
                             )}
 
                             {/* Delete account */}
-                            {hasFullAdminAccess && (
+                            {canManageAccess && (rolesList.find(r => r.key === user.role)?.privilegeLevel || 1) < currentUser.level && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteUser(user.id)}
@@ -808,16 +859,18 @@ export default function PanelGestorUsuarios({
                       <div className="grid grid-cols-2 gap-2 text-[11px] bg-[#141414] p-2.5 rounded-lg border border-white/5 font-mono">
                         <div>
                           <span className="text-slate-500 block text-[9px] uppercase">Rol asignado:</span>
-                          {hasFullAdminAccess ? (
+                          {canManageAccess && (rolesList.find(r => r.key === user.role)?.privilegeLevel || 1) < currentUser.level && user.id !== currentUser.id ? (
                             <select
                               value={user.role}
                               onChange={(e) => handleChangeRole(user.id, e.target.value as UserRole)}
                               disabled={loadingUserId === user.id}
                               className="bg-[#0A0A0A] border border-white/5 rounded-md p-0.5 font-medium text-[10px] text-slate-300 focus:outline-hidden mt-0.5 w-full"
                             >
-                              {rolesList.map(r => (
-                                <option key={r.id} value={r.key}>{r.name}</option>
-                              ))}
+                              {rolesList
+                                .filter(r => r.privilegeLevel < currentUser.level)
+                                .map(r => (
+                                  <option key={r.id} value={r.key}>{r.name}</option>
+                                ))}
                             </select>
                           ) : (
                             <span className="font-bold text-slate-300 text-[10px] uppercase mt-0.5 block">
@@ -844,7 +897,7 @@ export default function PanelGestorUsuarios({
                       </div>
 
                       <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-white/5">
-                        {user.activeSessionId && hasModeratorAccess && user.id !== currentUser.id && (
+                        {user.activeSessionId && canManageAccess && (rolesList.find(r => r.key === user.role)?.privilegeLevel || 1) < currentUser.level && user.id !== currentUser.id && (
                           <button
                             onClick={() => handleRevokeSession(user.id)}
                             disabled={loadingUserId === user.id}
@@ -854,9 +907,9 @@ export default function PanelGestorUsuarios({
                           </button>
                         )}
                         
-                        {user.isLocked && hasModeratorAccess && user.id !== currentUser.id && (
+                        {user.isLocked && canManageAccess && (rolesList.find(r => r.key === user.role)?.privilegeLevel || 1) < currentUser.level && user.id !== currentUser.id && (
                           <button
-                            onClick={() => handleResetAttempts(user.id)}
+                            onClick={() => handleAmnesty(user.id)}
                             disabled={loadingUserId === user.id}
                             className="px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg text-[10px] font-bold font-mono border border-blue-500/20 flex items-center gap-0.5 cursor-pointer"
                           >
@@ -864,7 +917,7 @@ export default function PanelGestorUsuarios({
                           </button>
                         )}
 
-                        {hasModeratorAccess && user.id !== currentUser.id && (
+                        {canManageAccess && (rolesList.find(r => r.key === user.role)?.privilegeLevel || 1) < currentUser.level && user.id !== currentUser.id && (
                           <div className="relative inline-block text-left" id={`lock-selector-mobile-container-${user.id}`}>
                             <button
                               onClick={() => {
@@ -969,7 +1022,7 @@ export default function PanelGestorUsuarios({
                           </div>
                         )}
 
-                        {hasFullAdminAccess && (
+                        {canManageAccess && (rolesList.find(r => r.key === user.role)?.privilegeLevel || 1) < currentUser.level && (
                           <button
                             onClick={() => handleDeleteUser(user.id)}
                             disabled={loadingUserId === user.id || user.id === currentUser.id}

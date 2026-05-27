@@ -18,21 +18,31 @@ interface AdminPanelProps {
 export default function AdminPanel(props: AdminPanelProps) {
   const { currentUser } = props;
   const [activeTab, setActiveTab] = useState<'users' | 'roles' | 'audit'>(() => {
-    return (localStorage.getItem('sentinel_admin_subtab') as any) || (currentUser.level === 3 ? 'audit' : 'users');
+    const saved = localStorage.getItem('sentinel_admin_subtab') as 'users' | 'roles' | 'audit';
+    const isLevel4or5 = currentUser.level === 4 || currentUser.level === 5;
+    const isLevel3or5 = currentUser.level === 3 || currentUser.level === 5;
+    const isLevel5 = currentUser.level >= 5;
+
+    if (saved === 'roles' && !isLevel5) return isLevel4or5 ? 'users' : 'audit';
+    if (saved === 'audit' && !isLevel3or5) return isLevel4or5 ? 'users' : 'roles';
+    if (saved === 'users' && !isLevel4or5) return isLevel3or5 ? 'audit' : 'roles';
+    
+    if (saved) return saved;
+    return isLevel4or5 ? 'users' : 'audit';
   });
 
   useEffect(() => {
     localStorage.setItem('sentinel_admin_subtab', activeTab);
   }, [activeTab]);
 
-  const isSuperAdmin = currentUser.level === 5;
-  const isModerador = currentUser.level === 4;
-  const isAuditor = currentUser.level === 3;
+  const hasRolesAccess = currentUser.level >= 5;
+  const hasUsersAccess = currentUser.level === 4 || currentUser.level === 5;
+  const hasAuditAccess = currentUser.level === 3 || currentUser.level === 5;
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-6 border-b border-white/10 mb-6">
-        {(isSuperAdmin || isModerador) && (
+        {hasUsersAccess && (
           <button
             onClick={() => setActiveTab('users')}
             className={`pb-3 text-sm font-semibold transition-all ${
@@ -43,7 +53,7 @@ export default function AdminPanel(props: AdminPanelProps) {
             Monitoreo y Usuarios
           </button>
         )}
-        {isSuperAdmin && (
+        {hasRolesAccess && (
           <button
             onClick={() => setActiveTab('roles')}
             className={`pb-3 text-sm font-semibold transition-all ${
@@ -54,7 +64,7 @@ export default function AdminPanel(props: AdminPanelProps) {
             Roles y Jerarquías (CRUD)
           </button>
         )}
-        {(isSuperAdmin || isAuditor) && (
+        {hasAuditAccess && (
           <button
             onClick={() => setActiveTab('audit')}
             className={`pb-3 text-sm font-semibold transition-all ${
@@ -68,18 +78,30 @@ export default function AdminPanel(props: AdminPanelProps) {
       </div>
 
       <div className="mt-6">
-        {activeTab === 'users' && (isSuperAdmin || isModerador) && (
+        {activeTab === 'users' && hasUsersAccess && (
           <PanelGestorUsuarios {...props} />
         )}
-        {activeTab === 'roles' && isSuperAdmin && (
+        {activeTab === 'users' && !hasUsersAccess && (
+          <div className="p-4 bg-red-500/10 text-red-500 rounded border border-red-500/20">
+            Acceso Denegado. Privilegios Insuficientes (Nivel 4 o 5 requerido).
+          </div>
+        )}
+
+        {activeTab === 'roles' && hasRolesAccess && (
           <PanelRolesJerarquia {...props} />
         )}
-        {activeTab === 'audit' && (isSuperAdmin || isAuditor) && (
-          <PanelAuditoriaCifrado {...props} />
-        )}
-        {activeTab === 'roles' && !isSuperAdmin && (
+        {activeTab === 'roles' && !hasRolesAccess && (
           <div className="p-4 bg-red-500/10 text-red-500 rounded border border-red-500/20">
             Acceso Denegado. Privilegios Insuficientes (Nivel 5 requerido).
+          </div>
+        )}
+
+        {activeTab === 'audit' && hasAuditAccess && (
+          <PanelAuditoriaCifrado {...props} />
+        )}
+        {activeTab === 'audit' && !hasAuditAccess && (
+          <div className="p-4 bg-red-500/10 text-red-500 rounded border border-red-500/20">
+            Acceso Denegado. Privilegios Insuficientes (Nivel 3 o 5 requerido).
           </div>
         )}
       </div>
