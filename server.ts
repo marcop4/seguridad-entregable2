@@ -868,6 +868,7 @@ async function startServer() {
       const userAgent = req.headers["user-agent"] || "unknown";
       const userIp = getClientIp(req);
 
+      let isNewUser = false;
       if (!user) {
         // Auto register with Google Identity
         const username = email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "") + makeId().substring(0, 3);
@@ -891,16 +892,11 @@ async function startServer() {
           createdAt: new Date().toISOString()
         };
         db.users.push(user);
-        saveDatabase(db);
-
-        logAudit(user.id, user.username, "GOOGLE_AUTH_AUTO_REGISTER", "success", req, `Nuevo usuario registrado e iniciado mediante Google Identity Platform desde IP: ${userIp}`);
-        addNotification("info", "Registro por Google", `Se ha registrado el usuario ${user.username} por Google [IP: ${userIp}].`);
+        isNewUser = true;
       } else {
         if (user.isLocked) {
           return res.status(403).json({ success: false, message: "Esta cuenta está bloqueada temporalmente. Por favor comuníquese con el administrador." });
         }
-        logAudit(user.id, user.username, "GOOGLE_AUTH_LOGIN", "success", req, `Inicio de sesión con Google exitoso desde IP: ${userIp}.`);
-        addNotification("audit", "Sesión Iniciada", `Usuario "${user.username}" inició sesión vía Google desde [IP: ${userIp}].`);
       }
 
       // Check pre-existing session
@@ -915,7 +911,17 @@ async function startServer() {
       user.activeSessionStartedAt = new Date().toISOString();
       user.failedAttempts = 0;
 
+      // Guardar todos los cambios del usuario primero
       saveDatabase(db);
+
+      // Despachar logs y notificaciones (estos cargan y guardan su propia instancia de DB)
+      if (isNewUser) {
+        logAudit(user.id, user.username, "GOOGLE_AUTH_AUTO_REGISTER", "success", req, `Nuevo usuario registrado e iniciado mediante Google Identity Platform desde IP: ${userIp}`);
+        addNotification("info", "Registro por Google", `Se ha registrado el usuario ${user.username} por Google [IP: ${userIp}].`);
+      } else {
+        logAudit(user.id, user.username, "GOOGLE_AUTH_LOGIN", "success", req, `Inicio de sesión con Google exitoso desde IP: ${userIp}.`);
+        addNotification("audit", "Sesión Iniciada", `Usuario "${user.username}" inició sesión vía Google desde [IP: ${userIp}].`);
+      }
 
       const { passwordHash, recoveryToken, ...safeUser } = user;
       res.json({
